@@ -1,0 +1,5 @@
+/target/
+/desktop/src-tauri/gen/
+*.mp4
+frameguard-findings.json
+frameguard-findings.csv

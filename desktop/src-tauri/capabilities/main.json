@@ -1,0 +1,6 @@
+{
+  "identifier": "main",
+  "description": "The local FrameGuard window",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}

@@ -7,6 +7,8 @@ FrameGuard finds sensitive text in local screen recordings before you publish or
 - Sample once per second by default. Set a custom rate or scan a time range to inspect brief exposures.
 - Flag custom text and edit a reusable wordlist. Rules support plain text, regular expressions, and Low, Medium, or High risk.
 - Review timestamped findings and the matching image region. The desktop app can rescan near a finding at 5 FPS.
+- Click a finding to play its flagged interval in a popup. A one-timestamp finding plays up to one second within the scan range.
+- Use the optional first-run profile to add work-specific keyword suggestions to the wordlist. You can also enter private phrases or on-screen asset filenames directly.
 - Export JSON or CSV with suspected secret values masked by default.
 - Scan from a terminal, view progress, cancel a scan, and open the sampled frame for a finding.
 
@@ -15,6 +17,8 @@ FrameGuard finds sensitive text in local screen recordings before you publish or
 Run the Windows x64 FrameGuard setup EXE and launch the app. In **Set up local scanning**, select **Download & install**. FrameGuard downloads about 66 MB of scanner components and opens the dashboard after checking video decoding and English OCR.
 
 The components live under your Windows user profile. Scans work offline after setup. The Windows CLI and TUI can use the same components.
+
+The optional personalization screens retrieve a small public keyword catalog. Profile choices, custom keywords, and recordings stay on your device. You can enter up to three keywords when suggestions are unavailable, or skip personalization.
 
 ## CLI and terminal
 

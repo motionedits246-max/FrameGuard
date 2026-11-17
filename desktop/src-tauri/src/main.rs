@@ -1,5 +1,7 @@
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
+mod preview;
+mod profile;
 mod runtime;
 
 use std::{
@@ -21,6 +23,7 @@ struct Session {
     generation: u64,
     selected: Option<Video>,
     active: Option<ActiveScan>,
+    clip: Option<preview::ClipRequest>,
 }
 
 struct ActiveScan {
@@ -71,6 +74,7 @@ async fn open_recording(app: AppHandle) -> Result<Option<OpenedVideo>, String> {
         app.asset_protocol_scope()
             .allow_file(video.path())
             .map_err(failure)?;
+        preview::clear_clip(&app, &mut session);
         session.generation += 1;
         let selected = OpenedVideo {
             generation: session.generation,
@@ -245,6 +249,9 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             runtime::runtime_status,
             runtime::install_runtime,
+            profile::profile_keywords,
+            preview::open_finding_clip,
+            preview::close_finding_clip,
             open_recording,
             scan_recording,
             cancel_scan,
@@ -258,10 +265,11 @@ fn main() {
         .run(|app, event| {
             if matches!(event, RunEvent::ExitRequested { .. }) {
                 let state = app.state::<DesktopState>();
-                if let Ok(session) = state.lock() {
+                if let Ok(mut session) = state.lock() {
                     if let Some(active) = &session.active {
                         active.cancelled.store(true, Ordering::Relaxed);
                     }
+                    preview::clear_clip(app, &mut session);
                 };
             }
         });

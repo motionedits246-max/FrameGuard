@@ -250,7 +250,7 @@ fn extract(tool: &Path, archive: &Path, dir: &Path, mode: &str, files: &[&str]) 
 mod tests {
     use std::sync::atomic::AtomicBool;
 
-    use frameguard_core::{open_video_with_tools, scan, ScanOptions, ScanStatus};
+    use frameguard_core::{capture_clip, open_video_with_tools, scan, ScanOptions, ScanStatus};
 
     use super::*;
 
@@ -295,6 +295,75 @@ mod tests {
         )?;
         assert_eq!(report.status, ScanStatus::Complete);
         assert_eq!(report.progress.done, 1);
+
+        let source = data.path().join("clip-source.mp4");
+        let ffmpeg = runtime.join("ffmpeg/ffmpeg.exe");
+        let output = Command::new(&ffmpeg)
+            .args([
+                "-v",
+                "error",
+                "-f",
+                "lavfi",
+                "-i",
+                "color=c=red:s=160x90:r=10:d=1",
+                "-f",
+                "lavfi",
+                "-i",
+                "color=c=lime:s=160x90:r=10:d=1",
+                "-f",
+                "lavfi",
+                "-i",
+                "color=c=blue:s=160x90:r=10:d=1",
+                "-filter_complex",
+                "concat=n=3:v=1:a=0",
+                "-c:v",
+                "libx264",
+                "-g",
+                "90",
+                "-sc_threshold",
+                "0",
+            ])
+            .arg(&source)
+            .output()?;
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let source = open_video_with_tools(source, ScanTools::managed(&runtime))?;
+        let fragment = data.path().join("finding.mp4");
+        assert!(capture_clip(
+            &source,
+            1.0,
+            2.0,
+            &fragment,
+            &AtomicBool::new(false)
+        )?);
+        let clipped = open_video_with_tools(&fragment, ScanTools::managed(&runtime))?;
+        assert!((clipped.metadata.duration - 1.0).abs() < 0.01);
+        let colors = Command::new(&ffmpeg)
+            .args(["-v", "error", "-i"])
+            .arg(&fragment)
+            .args([
+                "-vf",
+                "scale=1:1",
+                "-c:v",
+                "rawvideo",
+                "-threads",
+                "1",
+                "-pix_fmt",
+                "rgb24",
+                "-f",
+                "rawvideo",
+                "pipe:1",
+            ])
+            .output()?;
+        assert!(colors.status.success());
+        assert!(!colors.stdout.is_empty());
+        assert!(colors
+            .stdout
+            .chunks_exact(3)
+            .all(|rgb| rgb[0] < 10 && rgb[1] > 245 && rgb[2] < 10));
 
         install(data.path(), &archive_tool, |update| {
             assert_eq!(update.percent, 100)

@@ -1,9 +1,14 @@
 use std::{
     env,
-    io::Write,
+    io::{self, Read, Write},
     path::{Path, PathBuf},
-    process::{Command, Stdio},
-    sync::Arc,
+    process::{Child, Command, ExitStatus, Stdio},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+    thread,
+    time::Duration,
 };
 
 use anyhow::{bail, Context, Result};
@@ -170,6 +175,125 @@ pub fn capture_frame(video: &Video, seconds: f64) -> Result<Vec<u8>> {
         );
     }
     Ok(output.stdout)
+}
+
+pub fn capture_clip(
+    video: &Video,
+    start: f64,
+    end: f64,
+    output: &Path,
+    cancelled: &AtomicBool,
+) -> Result<bool> {
+    if !start.is_finite()
+        || !end.is_finite()
+        || start < 0.0
+        || end <= start
+        || end > video.metadata.duration
+    {
+        bail!("The clip range is outside the recording.");
+    }
+    if cancelled.load(Ordering::Relaxed) {
+        return Ok(false);
+    }
+    let duration = format!("{:.9}", end - start);
+    let fps = video.metadata.fps.unwrap_or(30.0).clamp(30.0, 60.0);
+    // Preserve the frame already on screen when the cut starts between two source frames.
+    let filter =
+        format!("fps={fps:.6}:start_time=0:round=up:eof_action=pass,pad=ceil(iw/2)*2:ceil(ih/2)*2");
+    let mut worker = video
+        .tools
+        .ffmpeg()
+        .args([
+            "-v",
+            "error",
+            "-nostdin",
+            "-protocol_whitelist",
+            "file,pipe",
+            "-ss",
+        ])
+        .arg(format!("{start:.9}"))
+        .args(["-noaccurate_seek", "-i"])
+        .arg(video.path())
+        .args([
+            "-map", "0:V:0", "-map", "0:a:0?", "-t", &duration, "-vf", &filter, "-af",
+        ])
+        .arg(format!("atrim=start=0:end={duration}"))
+        .args([
+            "-map_metadata",
+            "-1",
+            "-map_chapters",
+            "-1",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "veryfast",
+            "-pix_fmt",
+            "yuv420p",
+            "-threads",
+            "2",
+            "-c:a",
+            "aac",
+            "-movflags",
+            "+faststart",
+            "-n",
+        ])
+        .arg(output)
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()
+        .context("Starting the finding clip")?;
+
+    let stderr = worker.stderr.take().expect("piped FFmpeg errors");
+    let (status, notes) = thread::scope(|scope| {
+        let reader = scope.spawn(move || capture_output(stderr, 32 * 1024));
+        let status = wait_for_process(&mut worker, cancelled);
+        (status, reader.join())
+    });
+    let Some(status) = status? else {
+        return Ok(false);
+    };
+    let notes =
+        notes.map_err(|_| anyhow::anyhow!("The clip error reader stopped unexpectedly."))??;
+    if !status.success() {
+        bail!("FFmpeg could not prepare this clip: {}", diagnostic(&notes));
+    }
+    Ok(true)
+}
+
+pub(crate) fn wait_for_process(
+    child: &mut Child,
+    cancelled: &AtomicBool,
+) -> io::Result<Option<ExitStatus>> {
+    loop {
+        if cancelled.load(Ordering::Relaxed) {
+            let _ = child.kill();
+            child.wait()?;
+            return Ok(None);
+        }
+        match child.try_wait() {
+            Ok(Some(status)) => return Ok(Some(status)),
+            Ok(None) => thread::sleep(Duration::from_millis(20)),
+            Err(error) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(error);
+            }
+        }
+    }
+}
+
+pub(crate) fn capture_output(mut reader: impl Read, limit: usize) -> io::Result<Vec<u8>> {
+    let mut output = Vec::new();
+    let mut buffer = [0; 8 * 1024];
+    loop {
+        let read = reader.read(&mut buffer)?;
+        if read == 0 {
+            break;
+        }
+        let remaining = limit.saturating_sub(output.len());
+        output.extend_from_slice(&buffer[..read.min(remaining)]);
+    }
+    Ok(output)
 }
 
 pub const WINDOWS_RUNTIME_DIR: &str = "scanner-runtime-1";

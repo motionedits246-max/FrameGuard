@@ -59,6 +59,85 @@
       </section>
     </main>
 
+    <main class="setup-view profile-view" id="profileView" aria-label="Personalize FrameGuard" hidden>
+      <section class="setup-card profile-card card">
+        <div class="profile-head">
+          <div class="setup-mark"><i data-lucide="list-checks" aria-hidden="true"></i></div>
+          <button class="link" id="profileSkip" type="button">Skip setup</button>
+        </div>
+        <p class="profile-step mono" id="profileStep"></p>
+        <section class="profile-panel" data-profile-panel="role">
+          <h1 id="profileRoleTitle" tabindex="-1">What do you record?</h1>
+          <div class="profile-options" role="radiogroup" aria-labelledby="profileRoleTitle">
+            <label class="profile-option">
+              <input type="radio" name="profileRole" value="editor">
+              <i data-lucide="film" aria-hidden="true"></i><span>Video editing<small>Client projects and media</small></span>
+            </label>
+            <label class="profile-option">
+              <input type="radio" name="profileRole" value="designer">
+              <i data-lucide="monitor" aria-hidden="true"></i><span>Design and content<small>Mockups and brand assets</small></span>
+            </label>
+            <label class="profile-option">
+              <input type="radio" name="profileRole" value="educator">
+              <i data-lucide="type" aria-hidden="true"></i><span>Teaching<small>Lessons and student information</small></span>
+            </label>
+            <label class="profile-option">
+              <input type="radio" name="profileRole" value="business">
+              <i data-lucide="folder-open" aria-hidden="true"></i><span>Business and client work<small>Documents, invoices and demos</small></span>
+            </label>
+            <label class="profile-option">
+              <input type="radio" name="profileRole" value="developer">
+              <i data-lucide="square-terminal" aria-hidden="true"></i><span>Development<small>Code, terminals and walkthroughs</small></span>
+            </label>
+            <label class="profile-option">
+              <input type="radio" name="profileRole" value="other">
+              <i data-lucide="plus" aria-hidden="true"></i><span>Something else<small>Choose your own keywords</small></span>
+            </label>
+          </div>
+        </section>
+        <section class="profile-panel" data-profile-panel="topics" hidden>
+          <h1 id="profileTopicsTitle" tabindex="-1">What should FrameGuard watch for?</h1>
+          <div class="profile-options profile-topics" role="group" aria-labelledby="profileTopicsTitle">
+            <label class="profile-option">
+              <input type="checkbox" name="profileTopic" value="work" checked>
+              <i data-lucide="folder-open" aria-hidden="true"></i><span>Private work<small>Project names, asset filenames and unpublished labels</small></span>
+            </label>
+            <label class="profile-option">
+              <input type="checkbox" name="profileTopic" value="personal">
+              <i data-lucide="type" aria-hidden="true"></i><span>Personal details<small>Contact and identity information</small></span>
+            </label>
+            <label class="profile-option">
+              <input type="checkbox" name="profileTopic" value="access">
+              <i data-lucide="lock" aria-hidden="true"></i><span>Account access<small>Recovery codes and access links</small></span>
+            </label>
+          </div>
+        </section>
+        <section class="profile-panel" data-profile-panel="review" hidden>
+          <h1 tabindex="-1">Review your keywords</h1>
+          <p class="setup-intro" id="profileNote" role="status"></p>
+          <div class="profile-progress" id="profileProgress" hidden>
+            <div class="progress is-indeterminate" role="progressbar" aria-label="Loading keyword suggestions"><span></span></div>
+          </div>
+          <div id="profileResults" hidden>
+            <div class="profile-terms" id="profileTerms" role="group" aria-label="Suggested keywords"></div>
+            <fieldset class="profile-custom">
+              <legend>Add up to three keywords</legend>
+              <p class="muted small" id="profileCustomHelp">Use text that appears on screen, such as client names and asset filenames.</p>
+              <input type="text" aria-label="Custom keyword 1" maxlength="90" autocomplete="off" spellcheck="false">
+              <input type="text" aria-label="Custom keyword 2" maxlength="90" autocomplete="off" spellcheck="false">
+              <input type="text" aria-label="Custom keyword 3" maxlength="90" autocomplete="off" spellcheck="false">
+            </fieldset>
+          </div>
+        </section>
+        <div class="profile-footer">
+          <button class="btn" id="profileBack" type="button" hidden>Back</button>
+          <button class="btn primary" id="profileNext" type="button" disabled>
+            <span>Continue</span><i data-lucide="arrow-right" aria-hidden="true"></i>
+          </button>
+        </div>
+      </section>
+    </main>
+
     <nav class="tabs" id="tabs" role="tablist" aria-label="FrameGuard sections" hidden>
       <button class="tab" role="tab" id="tab-scan" data-view="scan" aria-controls="view-scan" aria-selected="true" type="button">
         <i data-lucide="scan-search" aria-hidden="true"></i><span>Scan</span>
@@ -375,9 +454,26 @@ DB_PASSWORD=hunter2-demo-only</textarea></label>
     </div>
   </dialog>
 
+  <dialog class="dialog clip-dialog" id="clipDialog" aria-labelledby="clipTitle" aria-describedby="clipRange">
+    <div class="dialog-head">
+      <div class="clip-heading"><i data-lucide="film" aria-hidden="true"></i><div>
+        <h2 id="clipTitle">Finding clip</h2>
+        <p class="muted small mono" id="clipRange"></p>
+      </div></div>
+      <button class="icon-btn" type="button" data-close aria-label="Close clip" autofocus><i data-lucide="x" aria-hidden="true"></i></button>
+    </div>
+    <div class="dialog-body">
+      <div class="clip-stage">
+        <video id="clipVideo" controls playsinline aria-label="Flagged video clip" hidden></video>
+        <p id="clipStatus" class="clip-status muted" role="status">Preparing clip</p>
+      </div>
+    </div>
+  </dialog>
+
   <div class="toasts" id="toasts" aria-live="polite"></div>
 
   <script src="./lucide.min.js"></script>
+  <script src="./profile-setup.js"></script>
   <script src="./app.js"></script>
 </body>
 </html>

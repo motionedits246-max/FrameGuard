@@ -1,7 +1,7 @@
 use std::{
     collections::HashMap,
-    io::{self, BufRead, BufReader, Read, Write},
-    process::{Child, ExitStatus, Stdio},
+    io::{BufRead, BufReader, Write},
+    process::Stdio,
     sync::{
         atomic::{AtomicBool, Ordering},
         mpsc::{self, Receiver, RecvTimeoutError},
@@ -14,7 +14,7 @@ use anyhow::{anyhow, bail, Context, Result};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    media::{diagnostic, ScanTools},
+    media::{capture_output, diagnostic, wait_for_process, ScanTools},
     rules::{matchers, Matcher},
     Risk, Rule, Video, VideoMetadata,
 };
@@ -426,7 +426,7 @@ fn read_ocr(
         let send = scope.spawn(move || input.write_all(&frame.pgm));
         let receive = scope.spawn(move || capture_output(output, 8 * 1024 * 1024));
         let notes = scope.spawn(move || capture_output(errors, 32 * 1024));
-        let exit = wait_for_ocr(&mut child, cancelled)?;
+        let exit = wait_for_process(&mut child, cancelled)?;
         let sent = send
             .join()
             .map_err(|_| anyhow!("The OCR input reader stopped unexpectedly."))?;
@@ -444,39 +444,6 @@ fn read_ocr(
         let tsv = String::from_utf8(output?)?;
         Ok(Some(parse_tsv(&tsv, frame.width, frame.height)))
     })
-}
-
-fn wait_for_ocr(child: &mut Child, cancelled: &AtomicBool) -> io::Result<Option<ExitStatus>> {
-    loop {
-        if cancelled.load(Ordering::Relaxed) {
-            let _ = child.kill();
-            child.wait()?;
-            return Ok(None);
-        }
-        match child.try_wait() {
-            Ok(Some(status)) => return Ok(Some(status)),
-            Ok(None) => thread::sleep(Duration::from_millis(20)),
-            Err(error) => {
-                let _ = child.kill();
-                let _ = child.wait();
-                return Err(error);
-            }
-        }
-    }
-}
-
-fn capture_output(mut reader: impl Read, limit: usize) -> io::Result<Vec<u8>> {
-    let mut output = Vec::new();
-    let mut buffer = [0; 8 * 1024];
-    loop {
-        let read = reader.read(&mut buffer)?;
-        if read == 0 {
-            break;
-        }
-        let remaining = limit.saturating_sub(output.len());
-        output.extend_from_slice(&buffer[..read.min(remaining)]);
-    }
-    Ok(output)
 }
 
 #[derive(Default)]

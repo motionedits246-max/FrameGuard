@@ -22,8 +22,12 @@
   };
   const count = (number, noun) => number.toLocaleString('en-US') + ' ' + noun + (number === 1 ? '' : 's');
   const riskNames = { all: 'All', low: 'Low', medium: 'Medium', high: 'High' };
+  const riskLevels = ['low', 'medium', 'high'];
   const rulesKey = 'frameguard-wordlist-v1';
+  const profileKey = 'frameguard-profile-setup-v1';
   const player = $('#videoPreview');
+  const clipDialog = $('#clipDialog');
+  const clipVideo = $('#clipVideo');
   const state = {
     video: null, fps: 1, rangeMode: 'whole', start: 0, end: 0, phrases: [],
     rules: [], findings: [], selected: null, filter: 'all', reveal: false,
@@ -34,6 +38,9 @@
   let nextRuleId = 1;
   let nextJobId = 1;
   let nextFindingId = 1;
+  let nextClipId = 1;
+  let activeClipId = 0;
+  let openRiskMenu = null;
   let editingRuleId = null;
   let testVersion = 0;
   let restored = false;
@@ -52,6 +59,25 @@
     }
   } catch {
     // A session can still edit and export the wordlist.
+  }
+
+  function addProfileKeywords(entries) {
+    const added = new Set(state.rules.filter(rule => rule.type === 'plain')
+      .map(rule => rule.pattern.trim().toLowerCase()));
+    // Keep a user's private terms masked even if they also appear in the public suggestions.
+    for (const { text, personal } of [...entries].sort((a, b) => Number(b.personal) - Number(a.personal))) {
+      const key = text.toLowerCase();
+      if (added.has(key)) continue;
+      added.add(key);
+      state.rules.push({
+        id: nextRuleId++, name: personal ? 'Personal keyword' : text,
+        type: 'plain', pattern: text, risk: personal ? 'high' : 'medium',
+        enabled: true, secret: personal,
+      });
+    }
+    if (entries.length) persistRules();
+    try { localStorage.setItem(profileKey, 'done'); }
+    catch { /* Keep this session usable without storage access. */ }
   }
 
   function persistRules() {
@@ -201,6 +227,54 @@
     }
   }
 
+  function releaseClip(clipId) {
+    invoke('close_finding_clip', { clipId }).catch(() => {});
+  }
+
+  async function playFindingClip(finding) {
+    if (!state.video || activeClipId) return;
+    const start = finding.first;
+    const end = finding.last > start ? finding.last : finding.pointEnd;
+    const clipId = nextClipId++;
+    activeClipId = clipId;
+    player.pause();
+    $('#clipTitle').textContent = finding.name;
+    $('#clipRange').textContent = timestamp(start) + ' – ' + timestamp(end);
+    const status = $('#clipStatus');
+    status.hidden = false;
+    status.textContent = 'Preparing clip';
+    clipVideo.hidden = true;
+    clipDialog.showModal();
+    try {
+      const path = await invoke('open_finding_clip', {
+        generation: state.video.generation, clipId, start, end,
+      });
+      if (activeClipId !== clipId || !clipDialog.open) {
+        releaseClip(clipId);
+        return;
+      }
+      if (!path) throw new Error('The clip could not be prepared.');
+      clipVideo.src = bridge.core.convertFileSrc(path);
+      clipVideo.hidden = false;
+      status.hidden = true;
+      await clipVideo.play().catch(() => {
+        // The native Play control can start the clip if autoplay is blocked.
+      });
+    } catch (error) {
+      if (activeClipId !== clipId) return;
+      status.textContent = String(error);
+      status.hidden = false;
+    }
+  }
+
+  function selectFinding(id) {
+    const finding = state.findings.find(item => item.id === id);
+    if (!finding) return;
+    state.selected = id;
+    playFindingClip(finding);
+    renderFindings();
+  }
+
   function renderFindings() {
     const list = visibleFindings();
     const detail = $('#detail');
@@ -223,7 +297,7 @@
     $('#findingList').innerHTML = list.map(item => {
       const time = item.first === item.last ? timestamp(item.first) : timestamp(item.first) + ' – ' + timestamp(item.last);
       return '<li><button type="button" class="finding risk-' + item.risk + '" data-id="' + item.id +
-        '" aria-current="' + (item.id === state.selected) + '"><span class="risk-dot" aria-hidden="true"></span><span class="f-main"><span class="f-name">' +
+        '" aria-haspopup="dialog" aria-current="' + (item.id === state.selected) + '"><span class="risk-dot" aria-hidden="true"></span><span class="f-main"><span class="f-name">' +
         escape(item.name) + '</span><code class="f-text">' + escape(displayText(item, !state.reveal)) +
         '</code></span><span class="f-meta"><span class="badge risk-' + item.risk + '">' + riskNames[item.risk] +
         '</span><span class="f-time">' + time + '</span></span></button></li>';
@@ -235,7 +309,7 @@
       const markers = list.map(item =>
         '<button type="button" class="marker risk-' + item.risk + '" style="left:' + Math.min(99, item.first / duration * 100) +
         '%;width:' + (item.last - item.first) / duration * 100 + '%" data-id="' + item.id + '" aria-label="' +
-        escape(item.name + ' at ' + timestamp(item.first)) + '" aria-current="' + (item.id === selected.id) + '"></button>'
+        escape(item.name + ' at ' + timestamp(item.first)) + '" aria-haspopup="dialog" aria-current="' + (item.id === selected.id) + '"></button>'
       ).join('');
       detail.innerHTML = '<div class="frame" id="detailFrame"></div><div><div class="timeline" role="group" aria-label="Findings timeline">' +
         markers + '</div><div class="timeline-scale"><span>00:00</span><span>' + shortTime(duration) +
@@ -245,24 +319,26 @@
         '</code><dl class="stats"><div><dt>First seen</dt><dd>' + timestamp(selected.first) +
         '</dd></div><div><dt>Last seen</dt><dd>' + timestamp(selected.last) +
         '</dd></div><div><dt>Samples hit</dt><dd>' + selected.samples_hit +
-        '</dd></div></dl><div class="actions"><button type="button" class="btn" id="seekFinding">' + icon('play') +
-        'Play in Scan</button><button type="button" class="btn" id="rescanBtn" ' + (job.status === 'running' ? 'disabled' : '') + '>' +
+        '</dd></div></dl><div class="actions"><button type="button" class="btn" id="playFinding" aria-haspopup="dialog">' + icon('play') +
+        'Play clip</button><button type="button" class="btn" id="rescanBtn" ' + (job.status === 'running' ? 'disabled' : '') + '>' +
         icon('crosshair') + 'Rescan nearby at 5 FPS</button></div>';
-      if (state.view === 'findings') renderCapture($('#detailFrame'), selected);
+      if (state.view === 'findings' && !clipDialog.open) renderCapture($('#detailFrame'), selected);
     }
     drawIcons();
   }
 
-  function mergeFindings(incoming, merge, fps) {
+  function mergeFindings(report, merge) {
+    const { findings, fps, end } = report;
     const merged = merge ? state.findings.slice() : [];
-    for (const hit of incoming) {
+    for (const hit of findings) {
+      const pointEnd = Math.min(end, hit.first + Math.min(1, 1 / fps));
       const current = merged.find(finding =>
         finding.name === hit.name && finding.risk === hit.risk && finding.text === hit.text &&
         Math.abs(finding.region.x - hit.region.x) < 0.02 && Math.abs(finding.region.y - hit.region.y) < 0.02 &&
         finding.first <= hit.last + 1 / fps && hit.first <= finding.last + 1 / fps
       );
       if (!current) {
-        merged.push({ ...hit, id: String(nextFindingId++) });
+        merged.push({ ...hit, id: String(nextFindingId++), pointEnd });
         continue;
       }
       if (hit.first < current.first) {
@@ -270,6 +346,7 @@
         current.region = hit.region;
       }
       current.last = Math.max(current.last, hit.last);
+      current.pointEnd = Math.max(current.pointEnd, pointEnd);
       current.sample_times_ms = [...new Set([...current.sample_times_ms, ...hit.sample_times_ms])];
       current.samples_hit = current.sample_times_ms.length;
     }
@@ -302,7 +379,7 @@
       });
       state.scanned = true;
       if (!merge) state.selected = null;
-      mergeFindings(report.findings, merge, fps);
+      mergeFindings(report, merge);
       Object.assign(job, report.progress, { status: report.status });
       message = (report.status === 'cancelled' ? 'Scan cancelled. ' : 'Scan complete. ') +
         count(state.findings.length, 'finding') + ' · ' + report.progress.reused + ' OCR results reused.';
@@ -338,11 +415,15 @@
   }
 
   function renderRules() {
+    closeRiskMenu();
     $('#rulesSub').textContent = state.rules.filter(rule => rule.enabled).length + ' of ' +
       count(state.rules.length, 'rule') + ' enabled.';
     $('#ruleList').innerHTML = state.rules.map(rule => {
-      const menu = ['low', 'medium', 'high'].map(risk =>
-        '<option value="' + risk + '"' + (risk === rule.risk ? ' selected' : '') + '>' + riskNames[risk] + '</option>'
+      const menuId = 'risk-options-' + rule.id;
+      const menu = riskLevels.map(risk =>
+        '<button type="button" role="option" tabindex="-1" data-risk-option="' + risk + '" aria-selected="' +
+        (risk === rule.risk) + '"><span class="risk-dot risk-' + risk + '" aria-hidden="true"></span>' +
+        '<span>' + riskNames[risk] + '</span>' + icon('check') + '</button>'
       ).join('');
       const controls = [['test', 'flask-conical'], ['edit', 'pencil'], ['duplicate', 'copy'], ['delete', 'trash-2']].map(([action, glyph]) =>
         '<button type="button" class="icon-btn' + (action === 'delete' ? ' is-danger' : '') +
@@ -353,10 +434,34 @@
         '"' + (rule.enabled ? ' checked' : '') + '><span></span></label><div class="rule-main"><div class="rule-name">' +
         escape(rule.name) + '<span class="tag">' + (rule.type === 'regex' ? 'Regex' : 'Plain text') +
         '</span>' + (rule.secret ? '<span class="tag">Masked</span>' : '') + '</div><code>' +
-        escape(rule.pattern) + '</code></div><div class="rule-side"><select class="risk-select risk-' + rule.risk +
-        '" data-rule-action="risk" aria-label="Risk for ' + escape(rule.name) + '">' + menu + '</select>' + controls + '</div></li>';
+        escape(rule.pattern) + '</code></div><div class="rule-side"><div class="risk-picker"><button type="button" class="risk-select risk-' + rule.risk +
+        '" data-risk-trigger aria-label="' + escape('Risk for ' + rule.name + ', ' + riskNames[rule.risk]) +
+        '" aria-haspopup="listbox" aria-expanded="false" aria-controls="' + menuId + '" popovertarget="' + menuId + '"><span>' + riskNames[rule.risk] +
+        '</span>' + icon('chevron-down') + '</button><div class="risk-options" id="' + menuId +
+        '" popover role="listbox" aria-label="Risk for ' + escape(rule.name) + '">' + menu + '</div></div>' + controls + '</div></li>';
     }).join('') || '<li class="card muted">Add a rule to begin a wordlist.</li>';
     drawIcons();
+  }
+
+  function closeRiskMenu() {
+    if (openRiskMenu?.matches(':popover-open')) openRiskMenu.hidePopover();
+  }
+
+  function showRiskMenu(trigger) {
+    const menu = document.getElementById(trigger.getAttribute('aria-controls'));
+    if (menu.matches(':popover-open')) { menu.hidePopover(); return; }
+    closeRiskMenu();
+    const box = trigger.getBoundingClientRect();
+    menu.showPopover({ source: trigger });
+    const width = Math.min(Math.max(142, box.width), window.innerWidth - 16);
+    menu.style.width = width + 'px';
+    menu.style.left = Math.max(8, Math.min(box.left, window.innerWidth - width - 8)) + 'px';
+    const height = menu.offsetHeight;
+    const top = box.bottom + height + 6 < window.innerHeight ? box.bottom + 6 : box.top - height - 6;
+    menu.style.top = Math.max(8, top) + 'px';
+    openRiskMenu = menu;
+    trigger.setAttribute('aria-expanded', 'true');
+    menu.querySelector('[aria-selected="true"]').focus({ preventScroll: true });
   }
 
   function draftRule() {
@@ -607,23 +712,37 @@
   });
   $('#findingList').addEventListener('click', event => {
     const button = event.target.closest('[data-id]');
-    if (button) { state.selected = button.dataset.id; renderFindings(); }
+    if (button) selectFinding(button.dataset.id);
   });
   $('#detail').addEventListener('click', event => {
     const marker = event.target.closest('.marker');
-    if (marker) { state.selected = marker.dataset.id; renderFindings(); return; }
+    if (marker) { selectFinding(marker.dataset.id); return; }
     const finding = state.findings.find(item => item.id === state.selected);
     if (!finding) return;
-    if (event.target.closest('#seekFinding')) {
-      go('scan');
-      if (player.readyState) player.currentTime = finding.first;
-      player.play().catch(() => toast('This video track could not be played.'));
-    }
+    if (event.target.closest('#playFinding')) playFindingClip(finding);
     if (event.target.closest('#rescanBtn')) {
       const start = Math.max(0, finding.first - 5);
       const end = Math.min(state.video.duration, finding.first + 5);
       go('scan');
       startScan({ start, end, fps: 5, merge: true });
+    }
+  });
+  clipVideo.addEventListener('error', () => {
+    if (!activeClipId || !clipVideo.getAttribute('src')) return;
+    clipVideo.hidden = true;
+    $('#clipStatus').textContent = 'This clip could not be played.';
+    $('#clipStatus').hidden = false;
+  });
+  clipDialog.addEventListener('close', () => {
+    const clipId = activeClipId;
+    activeClipId = 0;
+    clipVideo.pause();
+    clipVideo.removeAttribute('src');
+    clipVideo.load();
+    if (clipId) releaseClip(clipId);
+    if (state.view === 'findings') {
+      renderFindings();
+      $('#findingList [aria-current="true"]')?.focus();
     }
   });
   $('#revealBtn').addEventListener('click', () => { state.reveal = !state.reveal; renderFindings(); });
@@ -643,11 +762,32 @@
     const rule = state.rules.find(item => item.id === Number(row?.dataset.ruleId));
     if (!rule) return;
     if (event.target.dataset.ruleAction === 'toggle') rule.enabled = event.target.checked;
-    if (event.target.dataset.ruleAction === 'risk') rule.risk = event.target.value;
     persistRules();
     renderRules();
   });
   $('#ruleList').addEventListener('click', event => {
+    const trigger = event.target.closest('[data-risk-trigger]');
+    if (trigger) {
+      event.preventDefault();
+      showRiskMenu(trigger);
+      return;
+    }
+    const option = event.target.closest('[data-risk-option]');
+    if (option) {
+      const row = option.closest('[data-rule-id]');
+      const rule = state.rules.find(item => item.id === Number(row.dataset.ruleId));
+      const button = row.querySelector('[data-risk-trigger]');
+      button.classList.remove('risk-' + rule.risk);
+      rule.risk = option.dataset.riskOption;
+      button.classList.add('risk-' + rule.risk);
+      button.querySelector('span').textContent = riskNames[rule.risk];
+      button.setAttribute('aria-label', 'Risk for ' + rule.name + ', ' + riskNames[rule.risk]);
+      for (const choice of option.parentElement.children) choice.setAttribute('aria-selected', String(choice === option));
+      closeRiskMenu();
+      button.focus({ preventScroll: true });
+      persistRules();
+      return;
+    }
     const button = event.target.closest('button[data-rule-action]');
     const row = button?.closest('[data-rule-id]');
     const index = state.rules.findIndex(item => item.id === Number(row?.dataset.ruleId));
@@ -669,6 +809,42 @@
     persistRules();
     renderRules();
   });
+  $('#ruleList').addEventListener('toggle', event => {
+    const menu = event.target;
+    if (!menu.classList.contains('risk-options') || menu.matches(':popover-open')) return;
+    menu.previousElementSibling.setAttribute('aria-expanded', 'false');
+    if (openRiskMenu === menu) openRiskMenu = null;
+  }, true);
+  $('#ruleList').addEventListener('keydown', event => {
+    const button = event.target.closest('[data-risk-trigger]');
+    const option = event.target.closest('[data-risk-option]');
+    if (button && ['ArrowDown', 'ArrowUp'].includes(event.key)) {
+      event.preventDefault();
+      if (button.getAttribute('aria-expanded') === 'false') showRiskMenu(button);
+      return;
+    }
+    if (!option) return;
+    const menu = option.parentElement;
+    if (event.key === 'Escape' || event.key === 'Tab') {
+      if (event.key === 'Escape') event.preventDefault();
+      closeRiskMenu();
+      menu.previousElementSibling.focus({ preventScroll: true });
+      return;
+    }
+    const choices = [...menu.children];
+    const index = choices.indexOf(option);
+    const next = {
+      ArrowDown: (index + 1) % choices.length,
+      ArrowUp: (index + choices.length - 1) % choices.length,
+      Home: 0,
+      End: choices.length - 1,
+    }[event.key];
+    if (next === undefined) return;
+    event.preventDefault();
+    choices[next].focus({ preventScroll: true });
+  });
+  window.addEventListener('resize', closeRiskMenu);
+  document.addEventListener('scroll', closeRiskMenu, true);
   ['#rPattern', '#rSample'].forEach(selector => $(selector).addEventListener('input', testRule));
   $$('input[name="rType"]').forEach(input => input.addEventListener('change', testRule));
   $('#ruleForm').addEventListener('submit', async event => {
@@ -755,8 +931,14 @@
         nextRuleId = Math.max(0, ...state.rules.map(rule => rule.id)) + 1;
       } catch (error) { toast(error); }
     }
-    state.ready = true;
     $('#setupView').hidden = true;
+    let profileDone = false;
+    try { profileDone = localStorage.getItem(profileKey) === 'done'; }
+    catch { /* Personalization remains available this session. */ }
+    if (bridge && !profileDone) {
+      addProfileKeywords(await window.frameguardProfileSetup(invoke));
+    }
+    state.ready = true;
     $('.app').classList.remove('is-setup');
     $('#statusPill').hidden = false;
     $('#tabs').hidden = false;

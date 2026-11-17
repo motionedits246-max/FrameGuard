@@ -24,6 +24,7 @@ jobs:
       - run: cargo +stable test --locked
       - run: cargo +stable clippy --locked --all-targets -- -D warnings
       - run: node --check desktop/ui/app.js
+      - run: node --check desktop/ui/profile-setup.js
 
   windows:
     name: Windows desktop and CLI executables
@@ -40,7 +41,7 @@ jobs:
         run: cargo +stable build --locked --release -p frameguard-desktop -p frameguard-cli --features frameguard-desktop/custom-protocol
       - name: Check CLI
         run: .\target\release\frameguard.exe --version
-      - name: Test first-run setup and OCR
+      - name: Test first-run setup, OCR and finding clips
         run: cargo +stable test --locked --release -p frameguard-desktop --features custom-protocol installs_and_scans_with_managed_tools
       - uses: actions/upload-artifact@v4
         with:

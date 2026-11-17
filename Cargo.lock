@@ -1154,7 +1154,7 @@ dependencies = [
 
 [[package]]
 name = "frameguard-cli"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "anyhow",
  "clap",
@@ -1169,7 +1169,7 @@ dependencies = [
 
 [[package]]
 name = "frameguard-core"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "anyhow",
  "blake3",
@@ -1182,13 +1182,14 @@ dependencies = [
 
 [[package]]
 name = "frameguard-desktop"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
  "frameguard-core",
  "reqwest",
  "serde",
+ "serde_json",
  "sha2 0.10.9",
  "tauri",
  "tauri-build",

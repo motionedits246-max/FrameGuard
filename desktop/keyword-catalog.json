@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "roles": {
+    "editor": ["Client review only", "Unreleased footage", "Private assets", "Watermarked preview", "Do not publish"],
+    "designer": ["Client review only", "Internal concept", "Unreleased brand assets", "Private mockup", "Confidential design"],
+    "educator": ["Student ID", "Student records", "Class roster", "Grade report", "Student transcript"],
+    "business": ["Client confidential", "Private contract", "Invoice number", "Billing address", "Tax identification"],
+    "developer": ["Internal endpoint", "Production credentials", "Private repository", "Connection string", "Internal documentation"]
+  },
+  "topics": {
+    "personal": ["Home address", "Date of birth", "Personal phone", "Emergency contact"],
+    "access": ["Recovery code", "One-time password", "Account PIN", "Private access link"]
+  }
+}

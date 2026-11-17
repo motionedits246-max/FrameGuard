@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0b141b">
+  <meta name="description" content="FrameGuard scans local screen recordings for sensitive text. Get the desktop app or terminal build for Windows and Linux.">
+  <title>FrameGuard — Local video privacy scanner</title>
+  <link rel="icon" href="./assets/frameguard.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#content">Skip to content</a>
+  <header class="top">
+    <div class="wrap top-bar">
+      <a class="brand" href="#" aria-label="FrameGuard home">
+        <img src="./assets/frameguard.svg" width="34" height="34" alt="">
+        FrameGuard
+      </a>
+      <nav aria-label="Main navigation">
+        <a href="#workflow">How it works</a>
+        <a href="#screenshots">Screenshots</a>
+        <a href="#downloads">Downloads</a>
+      </nav>
+      <a class="source-link" href="https://github.com/motionedits246-max/FrameGuard">
+        GitHub <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 17 17 7M8 7h9v9"/></svg>
+      </a>
+    </div>
+  </header>
+
+  <main id="content">
+    <section class="hero" aria-labelledby="hero-title">
+      <div class="wrap hero-grid">
+        <div class="hero-copy">
+          <h1 id="hero-title">Find private text in <em>screen recordings.</em></h1>
+          <p>FrameGuard scans videos on your device and shows when sensitive text appeared. Review the flagged moments before you share a recording.</p>
+          <div class="hero-actions">
+            <a class="button button-primary" href="#downloads">Get FrameGuard <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 4v15m-5-5 5 5 5-5"/></svg></a>
+            <a class="button button-quiet" href="#workflow">See how it works</a>
+          </div>
+          <p class="platform-note">Windows and Linux · Desktop and terminal</p>
+        </div>
+        <figure class="hero-shot">
+          <a href="./assets/scan.jpg" aria-label="Open full-size scan workspace screenshot">
+            <img src="./assets/scan.jpg" width="1363" height="936" fetchpriority="high"
+              alt="FrameGuard scan workspace with a sample MP4 open and the sampling rate, range, and estimated frames visible">
+          </a>
+          <figcaption>Scan workspace with a sample recording</figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <section class="wrap section" id="workflow" aria-labelledby="workflow-title">
+      <div class="section-intro">
+        <h2 id="workflow-title">Review a recording</h2>
+        <p>Scan a whole MP4 or focus on the part you’re preparing to publish.</p>
+      </div>
+      <ol class="steps">
+        <li>
+          <h3>Choose what to scan</h3>
+          <p>Open a recording, choose a sampling rate, then set the time range or scan the entire video.</p>
+        </li>
+        <li>
+          <h3>Flag the text that matters</h3>
+          <p>Use the built-in rules or add client names, private asset filenames, and phrases to your wordlist.</p>
+        </li>
+        <li>
+          <h3>Review and export</h3>
+          <p>Check findings by severity, play the flagged interval in the desktop app, and export JSON or CSV.</p>
+        </li>
+      </ol>
+      <div class="privacy-note"><strong>Local OCR</strong><p>Your recordings and scan results stay on your device. Optional keyword setup fetches a public catalog.</p></div>
+    </section>
+
+    <section class="section gallery-band" id="screenshots" aria-labelledby="screenshots-title">
+      <div class="wrap">
+        <div class="section-intro">
+          <h2 id="screenshots-title">Inspect the flagged moment</h2>
+          <p>Open a finding to see the matched region or play just its clip.</p>
+        </div>
+        <div class="gallery">
+          <figure>
+            <a href="./assets/findings.jpg" aria-label="Open full-size findings screenshot">
+              <img src="./assets/findings.jpg" width="1363" height="936" loading="lazy"
+                alt="FrameGuard findings list with severities, timestamps, and a sampled frame of the recording">
+            </a>
+            <figcaption><strong>Findings</strong><span>Review the rule, timestamp, severity, and sampled frame.</span></figcaption>
+          </figure>
+          <figure>
+            <a href="./assets/clip.jpg" aria-label="Open full-size custom clip player screenshot">
+              <img src="./assets/clip.jpg" width="1363" height="936" loading="lazy"
+                alt="FrameGuard finding popup with a seek bar, playback, volume, and fullscreen controls for a five-second clip">
+            </a>
+            <figcaption><strong>Clip preview</strong><span>Seek and replay within the flagged interval.</span></figcaption>
+          </figure>
+        </div>
+      </div>
+    </section>
+
+    <section class="wrap section" id="downloads" aria-labelledby="downloads-title">
+      <div class="section-intro">
+        <h2 id="downloads-title">Download FrameGuard</h2>
+        <p>Pick your platform and the way you want to scan.</p>
+      </div>
+      <div class="install-grid">
+        <article class="platform-card" aria-labelledby="windows-title">
+          <div class="platform-heading">
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 5.5 21 3v18L3 18.5zM3 12h18M10.5 4.5v15"/></svg>
+            <div><h3 id="windows-title">Windows</h3><p>x64 · EXE and ZIP</p></div>
+          </div>
+          <div class="download-row">
+            <div><strong>Desktop <span>(GUI)</span></strong><p>Installer and guided component setup</p></div>
+            <a class="button button-primary" href="https://github.com/motionedits246-max/FrameGuard/releases/latest/download/FrameGuard_Windows_x64_Setup.exe" aria-label="Download the Windows desktop EXE">Download EXE</a>
+          </div>
+          <div class="download-row">
+            <div><strong>Terminal <span>(TUI + CLI)</span></strong><p>Interactive terminal and scriptable scans</p></div>
+            <a class="button button-quiet" href="https://github.com/motionedits246-max/FrameGuard/releases/latest/download/FrameGuard_Windows_x64_Terminal.zip" aria-label="Download the Windows terminal ZIP">Download ZIP</a>
+          </div>
+          <details>
+            <summary>Installation instructions</summary>
+            <p>Run the EXE and follow the on-screen scanner setup. For the terminal build, extract the ZIP and run the following command from its folder.</p>
+            <pre><code>.\frameguard.exe tui</code></pre>
+            <p>The terminal build uses the desktop scanner components or FFmpeg, ffprobe, and Tesseract with English data on PATH.</p>
+          </details>
+        </article>
+
+        <article class="platform-card" aria-labelledby="linux-title">
+          <div class="platform-heading">
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6"><rect x="2" y="4" width="20" height="15" rx="2"/><path d="m7 9 3 2.5L7 14m6 0h4"/></svg>
+            <div><h3 id="linux-title">Linux</h3><p>x64 · Debian 12 and Ubuntu 22.04 or newer</p></div>
+          </div>
+          <div class="download-row">
+            <div><strong>Desktop <span>(GUI)</span></strong><p>App launcher, OCR, and video playback</p></div>
+            <a class="button button-primary" href="https://github.com/motionedits246-max/FrameGuard/releases/latest/download/FrameGuard_Linux_x64_Desktop.deb" aria-label="Download the Linux desktop DEB">Download DEB</a>
+          </div>
+          <div class="download-row">
+            <div><strong>Terminal <span>(TUI + CLI)</span></strong><p>Installs the <code>frameguard</code> command</p></div>
+            <a class="button button-quiet" href="https://github.com/motionedits246-max/FrameGuard/releases/latest/download/FrameGuard_Linux_x64_Terminal.deb" aria-label="Download the Linux terminal DEB">Download DEB</a>
+          </div>
+          <details>
+            <summary>Installation instructions</summary>
+            <p>From your download folder, install the package you chose. APT resolves the scanner dependencies.</p>
+            <pre><code>sudo apt install ./FrameGuard_Linux_x64_Desktop.deb</code></pre>
+            <pre><code>sudo apt install ./FrameGuard_Linux_x64_Terminal.deb
+frameguard tui</code></pre>
+          </details>
+        </article>
+      </div>
+      <p class="download-note">Find version history and package details on <a href="https://github.com/motionedits246-max/FrameGuard/releases">GitHub Releases</a>.</p>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="wrap footer-bar">
+      <a class="brand" href="#" aria-label="FrameGuard home"><img src="./assets/frameguard.svg" width="29" height="29" alt="">FrameGuard</a>
+      <nav aria-label="Project links"><a href="https://github.com/motionedits246-max/FrameGuard">Source</a><a href="https://github.com/motionedits246-max/FrameGuard/issues">Report an issue</a></nav>
+    </div>
+  </footer>
+</body>
+</html>

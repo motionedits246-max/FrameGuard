@@ -5,8 +5,15 @@ on:
     branches:
       - main
       - "feature/**"
+    tags:
+      - "v*"
   pull_request:
   workflow_dispatch:
+    inputs:
+      publish_release:
+        description: Publish the verified installers to GitHub Releases
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -25,6 +32,7 @@ jobs:
       - run: cargo +stable clippy --locked --all-targets -- -D warnings
       - run: node --check desktop/ui/app.js
       - run: node --check desktop/ui/profile-setup.js
+      - run: node --check desktop/ui/clip-player.js
 
   windows:
     name: Windows desktop and CLI executables
@@ -78,3 +86,140 @@ jobs:
           name: FrameGuard-Windows-Setup-x64
           path: target/release/bundle/nsis/*-setup.exe
           if-no-files-found: error
+      - name: Stage Windows downloads
+        run: |
+          New-Item -ItemType Directory -Path release-files
+          $setup = Get-ChildItem -Path target/release/bundle/nsis -Filter '*-setup.exe' -File
+          Copy-Item -LiteralPath $setup.FullName -Destination release-files/FrameGuard_Windows_x64_Setup.exe
+          Compress-Archive -LiteralPath target/release/frameguard.exe -DestinationPath release-files/FrameGuard_Windows_x64_Terminal.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FrameGuard-release-windows
+          path: release-files/
+          if-no-files-found: error
+
+  linux:
+    name: Debian and Ubuntu desktop and terminal packages
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y --no-install-recommends build-essential pkg-config libwebkit2gtk-4.1-dev libssl-dev libxdo-dev librsvg2-dev xvfb xauth
+      - name: Set up Rust
+        run: rustup toolchain install stable --profile minimal
+      - name: Build desktop package
+        working-directory: desktop
+        env:
+          RUSTUP_TOOLCHAIN: stable
+        run: npx --yes --package "@tauri-apps/cli@2.12.5" tauri build --bundles deb --ci -- --locked
+      - name: Package the terminal app
+        run: |
+          cargo +stable build --locked --release -p frameguard-cli
+          mkdir -p release-files
+          mv target/release/bundle/deb/*.deb release-files/FrameGuard_Linux_x64_Desktop.deb
+          stage=$(mktemp -d)
+          install -D -m 755 target/release/frameguard "$stage/usr/bin/frameguard"
+          mkdir -p "$stage/DEBIAN"
+          version=$(target/release/frameguard --version | cut -d ' ' -f 2)
+          cat > "$stage/DEBIAN/control" <<EOF
+          Package: frameguard-terminal
+          Version: $version
+          Architecture: amd64
+          Maintainer: FrameGuard contributors <331259961+motionedits246-max@users.noreply.github.com>
+          Section: utils
+          Priority: optional
+          Depends: libc6 (>= 2.35), libgcc-s1, ffmpeg, tesseract-ocr, tesseract-ocr-eng
+          Description: Interactive terminal and CLI for FrameGuard video privacy scanning
+          EOF
+          dpkg-deb --root-owner-group --build "$stage" release-files/FrameGuard_Linux_x64_Terminal.deb
+      - name: Install and smoke-test both Linux packages
+        run: |
+          for package in release-files/*.deb; do
+            test "$(dpkg-deb -f "$package" Architecture)" = amd64
+          done
+          sudo apt-get install -y "$PWD/release-files/FrameGuard_Linux_x64_Desktop.deb" "$PWD/release-files/FrameGuard_Linux_x64_Terminal.deb"
+          frameguard --version
+          ffmpeg -v error -f lavfi -i color=white:s=800x360:d=1:r=24 \
+            -vf "drawtext=text=FrameGuardDemo:fontsize=54:fontcolor=black:x=32:y=32" \
+            -c:v libx264 -pix_fmt yuv420p -threads 1 /tmp/frameguard-fixture.mp4
+          frameguard scan /tmp/frameguard-fixture.mp4 --text FrameGuardDemo --output /tmp/frameguard-findings.json
+          python3 -c 'import json; assert json.load(open("/tmp/frameguard-findings.json"))["findings"]'
+          python3 - <<'PY'
+          import fcntl
+          import os
+          import pty
+          import select
+          import struct
+          import subprocess
+          import termios
+
+          master, slave = pty.openpty()
+          fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack("HHHH", 30, 100, 0, 0))
+          with subprocess.Popen(["frameguard", "tui"], stdin=slave, stdout=slave, stderr=slave,
+                                env={**os.environ, "TERM": "xterm-256color"}) as process:
+              os.close(slave)
+              try:
+                  assert select.select([master], [], [], 8)[0], "Terminal did not render"
+                  os.read(master, 65536)
+                  os.write(master, b"q")
+                  assert process.wait(timeout=8) == 0
+              finally:
+                  if process.poll() is None:
+                      process.kill()
+                  os.close(master)
+          PY
+          result=0
+          timeout 12s xvfb-run -a frameguard-desktop > /tmp/frameguard-desktop.log 2>&1 || result=$?
+          if [ "$result" -ne 124 ]; then
+            cat /tmp/frameguard-desktop.log
+            exit 1
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FrameGuard-release-linux
+          path: release-files/
+          if-no-files-found: error
+
+  release:
+    name: Publish verified downloads
+    if: >-
+      startsWith(github.ref, 'refs/tags/v') ||
+      (github.event_name == 'workflow_dispatch' && inputs.publish_release) ||
+      (github.event_name == 'push' && github.ref == 'refs/heads/feature/local-ocr' &&
+       startsWith(github.event.head_commit.message, 'Release FrameGuard v'))
+    needs: [core, windows, linux]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: FrameGuard-release-*
+          merge-multiple: true
+          path: release-files
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(sed -n '/^\[workspace.package\]/,/^\[/s/^version = "\([^"]*\)"/\1/p' Cargo.toml)
+          test -n "$version"
+          tag=v"$version"
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then test "$GITHUB_REF_NAME" = "$tag"; fi
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release view "$tag" --json assets --jq '.assets[].name' > /tmp/frameguard-release-assets
+            for file in release-files/*; do
+              grep -Fxq "${file##*/}" /tmp/frameguard-release-assets
+            done
+            echo "The release already has all four downloads."
+            exit 0
+          fi
+          cat > /tmp/frameguard-release-notes <<'EOF'
+          - Desktop installers and terminal downloads for Windows and Debian-based Linux.
+          - Custom playback controls for flagged clips.
+          - Linux packages include scanner dependencies through apt.
+          EOF
+          gh release create "$tag" release-files/* --target "$GITHUB_SHA" --title "FrameGuard $tag" --notes-file /tmp/frameguard-release-notes --latest

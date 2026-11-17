@@ -1,0 +1,18 @@
+{
+  "bundle": {
+    "targets": ["deb"],
+    "linux": {
+      "deb": {
+        "depends": [
+          "ffmpeg",
+          "tesseract-ocr",
+          "tesseract-ocr-eng",
+          "gstreamer1.0-plugins-good",
+          "gstreamer1.0-libav",
+          "libssl3 | libssl3t64",
+          "ca-certificates"
+        ]
+      }
+    }
+  }
+}

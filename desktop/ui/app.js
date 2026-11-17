@@ -28,6 +28,7 @@
   const player = $('#videoPreview');
   const clipDialog = $('#clipDialog');
   const clipVideo = $('#clipVideo');
+  const clipPlayback = window.createClipPlayer(clipDialog, timestamp);
   const state = {
     video: null, fps: 1, rangeMode: 'whole', start: 0, end: 0, phrases: [],
     rules: [], findings: [], selected: null, filter: 'all', reveal: false,
@@ -254,12 +255,8 @@
         return;
       }
       if (!path) throw new Error('The clip could not be prepared.');
-      clipVideo.src = bridge.core.convertFileSrc(path);
-      clipVideo.hidden = false;
       status.hidden = true;
-      await clipVideo.play().catch(() => {
-        // The native Play control can start the clip if autoplay is blocked.
-      });
+      clipPlayback.open(bridge.core.convertFileSrc(path));
     } catch (error) {
       if (activeClipId !== clipId) return;
       status.textContent = String(error);
@@ -729,16 +726,14 @@
   });
   clipVideo.addEventListener('error', () => {
     if (!activeClipId || !clipVideo.getAttribute('src')) return;
-    clipVideo.hidden = true;
+    clipPlayback.clear();
     $('#clipStatus').textContent = 'This clip could not be played.';
     $('#clipStatus').hidden = false;
   });
   clipDialog.addEventListener('close', () => {
     const clipId = activeClipId;
     activeClipId = 0;
-    clipVideo.pause();
-    clipVideo.removeAttribute('src');
-    clipVideo.load();
+    clipPlayback.clear();
     if (clipId) releaseClip(clipId);
     if (state.view === 'findings') {
       renderFindings();

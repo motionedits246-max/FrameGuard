@@ -463,9 +463,29 @@ DB_PASSWORD=hunter2-demo-only</textarea></label>
       <button class="icon-btn" type="button" data-close aria-label="Close clip" autofocus><i data-lucide="x" aria-hidden="true"></i></button>
     </div>
     <div class="dialog-body">
-      <div class="clip-stage">
-        <video id="clipVideo" controls playsinline aria-label="Flagged video clip" hidden></video>
+      <div class="clip-stage" id="clipStage" role="region" aria-label="Finding clip player" tabindex="0">
+        <video id="clipVideo" playsinline aria-label="Flagged video clip" hidden></video>
         <p id="clipStatus" class="clip-status muted" role="status">Preparing clip</p>
+        <div class="clip-controls" id="clipControls" role="group" aria-label="Clip controls" hidden>
+          <button class="clip-control clip-play" id="clipPlay" type="button" title="Play" aria-label="Play">
+            <span data-icon="play"><i data-lucide="play" aria-hidden="true"></i></span>
+            <span data-icon="pause" hidden><i data-lucide="pause" aria-hidden="true"></i></span>
+            <span data-icon="replay" hidden><i data-lucide="rotate-ccw" aria-hidden="true"></i></span>
+          </button>
+          <input class="clip-slider" type="range" id="clipSeek" min="0" max="1" step="any" value="0" aria-label="Seek within clip" disabled>
+          <output class="clip-clock mono" id="clipClock" for="clipSeek">00:00.0 / 00:00.0</output>
+          <div class="clip-volume" id="clipVolumeGroup">
+            <button class="clip-control" id="clipMute" type="button" title="Mute" aria-label="Mute">
+              <span data-icon="sound"><i data-lucide="volume-2" aria-hidden="true"></i></span>
+              <span data-icon="mute" hidden><i data-lucide="volume-x" aria-hidden="true"></i></span>
+            </button>
+            <input class="clip-slider" type="range" id="clipVolume" min="0" max="1" step="0.01" value="1" aria-label="Clip volume">
+          </div>
+          <button class="clip-control" id="clipFullscreen" type="button" title="Fullscreen" aria-label="Fullscreen">
+            <span data-icon="expand"><i data-lucide="maximize" aria-hidden="true"></i></span>
+            <span data-icon="shrink" hidden><i data-lucide="minimize" aria-hidden="true"></i></span>
+          </button>
+        </div>
       </div>
     </div>
   </dialog>
@@ -474,6 +494,7 @@ DB_PASSWORD=hunter2-demo-only</textarea></label>
 
   <script src="./lucide.min.js"></script>
   <script src="./profile-setup.js"></script>
+  <script src="./clip-player.js"></script>
   <script src="./app.js"></script>
 </body>
 </html>

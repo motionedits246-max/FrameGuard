@@ -1,27 +1,18 @@
 #[tauri::command]
 pub async fn profile_keywords(role: String, topics: Vec<String>) -> Result<Vec<String>, String> {
-    #[cfg(windows)]
-    {
-        if !matches!(
-            role.as_str(),
-            "editor" | "designer" | "educator" | "business" | "developer"
-        ) {
-            return Ok(Vec::new());
-        }
-        tauri::async_runtime::spawn_blocking(move || {
-            download_keywords(&role, &topics).map_err(super::failure)
-        })
-        .await
-        .map_err(super::failure)?
+    if !matches!(
+        role.as_str(),
+        "editor" | "designer" | "educator" | "business" | "developer"
+    ) {
+        return Ok(Vec::new());
     }
-    #[cfg(not(windows))]
-    {
-        let _ = (role, topics);
-        Ok(Vec::new())
-    }
+    tauri::async_runtime::spawn_blocking(move || {
+        download_keywords(&role, &topics).map_err(super::failure)
+    })
+    .await
+    .map_err(super::failure)?
 }
 
-#[cfg(windows)]
 fn download_keywords(role: &str, topics: &[String]) -> anyhow::Result<Vec<String>> {
     use std::{collections::HashMap, io::Read, time::Duration};
 

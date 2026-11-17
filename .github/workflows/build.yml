@@ -45,3 +45,25 @@ jobs:
             target/release/frameguard-desktop.exe
             target/release/frameguard.exe
           if-no-files-found: error
+      - name: Build Windows setup
+        working-directory: desktop
+        env:
+          RUSTUP_TOOLCHAIN: stable
+        run: npx --yes --package "@tauri-apps/cli@2.12.5" tauri build --bundles nsis --ci -- --locked
+      - name: Test Windows setup
+        run: |
+          $installers = @(Get-ChildItem -Path target/release/bundle/nsis -Filter '*-setup.exe' -File)
+          if ($installers.Count -ne 1) { throw "Expected one FrameGuard setup executable." }
+          $installDir = Join-Path $env:RUNNER_TEMP 'FrameGuardSetupCheck'
+          $process = Start-Process -FilePath $installers[0].FullName -ArgumentList '/S', "/D=$installDir" -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw "FrameGuard setup exited with code $($process.ExitCode)." }
+          $app = Get-ChildItem -LiteralPath $installDir -Filter '*.exe' -File |
+            Where-Object { $_.Name -in @('frameguard-desktop.exe', 'FrameGuard.exe') }
+          if (-not $app) { throw "Setup did not install the FrameGuard executable." }
+          Write-Host "Installed $($app.Name)"
+          Get-FileHash -LiteralPath $installers[0].FullName -Algorithm SHA256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FrameGuard-Windows-Setup-x64
+          path: target/release/bundle/nsis/*-setup.exe
+          if-no-files-found: error

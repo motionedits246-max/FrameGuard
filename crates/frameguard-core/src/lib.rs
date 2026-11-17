@@ -2,7 +2,10 @@ mod media;
 mod rules;
 mod scan;
 
-pub use media::{capture_frame, open_video, Video, VideoMetadata};
+pub use media::{
+    capture_frame, open_video, open_video_with_tools, ScanTools, Video, VideoMetadata,
+    WINDOWS_RUNTIME_DIR,
+};
 pub use rules::{default_rules, test_rule, Risk, Rule, RuleKind};
 pub use scan::{scan, Finding, Progress, Region, ScanOptions, ScanReport, ScanStatus};
 

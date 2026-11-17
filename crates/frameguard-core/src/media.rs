@@ -1,7 +1,9 @@
 use std::{
     env,
+    io::Write,
     path::{Path, PathBuf},
     process::{Command, Stdio},
+    sync::Arc,
 };
 
 use anyhow::{bail, Context, Result};
@@ -10,6 +12,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Debug)]
 pub struct Video {
     path: PathBuf,
+    pub(crate) tools: Arc<ScanTools>,
     pub metadata: VideoMetadata,
 }
 
@@ -48,6 +51,10 @@ struct Format {
 }
 
 pub fn open_video(path: impl AsRef<Path>) -> Result<Video> {
+    open_video_with_tools(path, ScanTools::system())
+}
+
+pub fn open_video_with_tools(path: impl AsRef<Path>, tools: ScanTools) -> Result<Video> {
     let path = dunce::canonicalize(path).context("Opening the selected video")?;
     if !path.is_file()
         || !path
@@ -57,7 +64,8 @@ pub fn open_video(path: impl AsRef<Path>) -> Result<Video> {
     {
         bail!("Choose a local MP4 file.");
     }
-    let output = ffprobe()
+    let output = tools
+        .ffprobe()
         .args([
             "-v",
             "error",
@@ -72,7 +80,7 @@ pub fn open_video(path: impl AsRef<Path>) -> Result<Video> {
         ])
         .arg(&path)
         .output()
-        .context("Running ffprobe. Install FFmpeg or set FRAMEGUARD_FFPROBE")?;
+        .context("Starting ffprobe")?;
     if !output.status.success() {
         bail!(
             "ffprobe could not read the MP4: {}",
@@ -118,6 +126,7 @@ pub fn open_video(path: impl AsRef<Path>) -> Result<Video> {
         .into_owned();
     Ok(Video {
         path,
+        tools: Arc::new(tools),
         metadata: VideoMetadata {
             name,
             duration,
@@ -132,7 +141,9 @@ pub fn capture_frame(video: &Video, seconds: f64) -> Result<Vec<u8>> {
     if !seconds.is_finite() || seconds < 0.0 || seconds >= video.metadata.duration {
         bail!("The timestamp is outside the video.");
     }
-    let output = ffmpeg()
+    let output = video
+        .tools
+        .ffmpeg()
         .args(["-v", "error", "-protocol_whitelist", "file,pipe", "-ss"])
         .arg(format!("{seconds:.9}"))
         .arg("-i")
@@ -161,20 +172,125 @@ pub fn capture_frame(video: &Video, seconds: f64) -> Result<Vec<u8>> {
     Ok(output.stdout)
 }
 
-pub(crate) fn ffmpeg() -> Command {
-    command("FRAMEGUARD_FFMPEG", "ffmpeg")
+pub const WINDOWS_RUNTIME_DIR: &str = "scanner-runtime-1";
+
+#[derive(Clone, Debug)]
+pub struct ScanTools {
+    ffmpeg: PathBuf,
+    ffprobe: PathBuf,
+    tesseract: PathBuf,
+    tessdata: Option<PathBuf>,
 }
 
-fn ffprobe() -> Command {
-    command("FRAMEGUARD_FFPROBE", "ffprobe")
+impl ScanTools {
+    pub fn system() -> Self {
+        let mut tools = Self {
+            ffmpeg: "ffmpeg".into(),
+            ffprobe: "ffprobe".into(),
+            tesseract: "tesseract".into(),
+            tessdata: None,
+        };
+        #[cfg(windows)]
+        if let Some(dir) = env::var_os("LOCALAPPDATA") {
+            let root = PathBuf::from(dir)
+                .join("com.motionedits.frameguard")
+                .join(WINDOWS_RUNTIME_DIR);
+            let managed = Self::managed(&root);
+            if managed.has_managed_files() {
+                tools = managed;
+            }
+        }
+        if let Some(path) = env::var_os("FRAMEGUARD_FFMPEG") {
+            tools.ffmpeg = path.into();
+        }
+        if let Some(path) = env::var_os("FRAMEGUARD_FFPROBE") {
+            tools.ffprobe = path.into();
+        }
+        if let Some(path) = env::var_os("FRAMEGUARD_TESSERACT") {
+            tools.tesseract = path.into();
+            tools.tessdata = None;
+        }
+        tools
+    }
+
+    pub fn managed(root: &Path) -> Self {
+        Self {
+            ffmpeg: root.join("ffmpeg").join("ffmpeg.exe"),
+            ffprobe: root.join("ffmpeg").join("ffprobe.exe"),
+            tesseract: root.join("tesseract").join("tesseract.exe"),
+            tessdata: Some(root.join("tesseract").join("tessdata")),
+        }
+    }
+
+    pub fn has_managed_files(&self) -> bool {
+        self.ffmpeg.is_file()
+            && self.ffprobe.is_file()
+            && self.tesseract.is_file()
+            && self
+                .tessdata
+                .as_ref()
+                .is_some_and(|dir| dir.join("eng.traineddata").is_file())
+    }
+
+    pub fn verify(&self) -> Result<()> {
+        let ffmpeg = self
+            .ffmpeg()
+            .arg("-version")
+            .output()
+            .context("Starting FFmpeg")?;
+        if !ffmpeg.status.success() {
+            bail!("FFmpeg did not start: {}", diagnostic(&ffmpeg.stderr));
+        }
+        let ffprobe = self
+            .ffprobe()
+            .arg("-version")
+            .output()
+            .context("Starting ffprobe")?;
+        if !ffprobe.status.success() {
+            bail!("ffprobe did not start: {}", diagnostic(&ffprobe.stderr));
+        }
+        let mut ocr = self
+            .tesseract()
+            .args(["stdin", "stdout", "-l", "eng", "--psm", "6", "--dpi", "300"])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .stderr(Stdio::piped())
+            .spawn()
+            .context("Starting Tesseract")?;
+        let input = (|| -> std::io::Result<()> {
+            let mut pipe = ocr.stdin.take().expect("piped OCR input");
+            pipe.write_all(b"P5\n32 32\n255\n")?;
+            pipe.write_all(&[255; 32 * 32])
+        })();
+        let output = ocr.wait_with_output().context("Checking Tesseract")?;
+        if !output.status.success() {
+            bail!(
+                "Tesseract could not load its English recognition data: {}",
+                diagnostic(&output.stderr)
+            );
+        }
+        input.context("Checking Tesseract input")?;
+        Ok(())
+    }
+
+    pub(crate) fn ffmpeg(&self) -> Command {
+        command(&self.ffmpeg)
+    }
+
+    fn ffprobe(&self) -> Command {
+        command(&self.ffprobe)
+    }
+
+    pub(crate) fn tesseract(&self) -> Command {
+        let mut process = command(&self.tesseract);
+        if let Some(dir) = &self.tessdata {
+            process.arg("--tessdata-dir").arg(dir);
+        }
+        process
+    }
 }
 
-pub(crate) fn tesseract() -> Command {
-    command("FRAMEGUARD_TESSERACT", "tesseract")
-}
-
-fn command(variable: &str, fallback: &str) -> Command {
-    let executable = env::var_os(variable).unwrap_or_else(|| fallback.into());
+fn command(executable: &Path) -> Command {
     let mut command = Command::new(executable);
     command.stdin(Stdio::null());
     #[cfg(windows)]

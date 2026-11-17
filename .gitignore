@@ -1,5 +1,6 @@
 /target/
 /desktop/src-tauri/gen/
+/desktop/src-tauri/resources/archive-tool/
 *.mp4
 frameguard-findings.json
 frameguard-findings.csv

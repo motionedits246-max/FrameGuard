@@ -28,22 +28,27 @@ jobs:
   windows:
     name: Windows desktop and CLI executables
     runs-on: windows-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - name: Set up Rust
         run: rustup toolchain install stable --profile minimal
       - run: cargo +stable test --locked
+      - name: Prepare archive tool
+        run: ./desktop/scripts/prepare-windows-resources.ps1
       - name: Build portable executables
         run: cargo +stable build --locked --release -p frameguard-desktop -p frameguard-cli --features frameguard-desktop/custom-protocol
       - name: Check CLI
         run: .\target\release\frameguard.exe --version
+      - name: Test first-run setup and OCR
+        run: cargo +stable test --locked --release -p frameguard-desktop --features custom-protocol installs_and_scans_with_managed_tools
       - uses: actions/upload-artifact@v4
         with:
           name: FrameGuard-Windows-x64
           path: |
             target/release/frameguard-desktop.exe
             target/release/frameguard.exe
+            target/release/archive-tool/
           if-no-files-found: error
       - name: Build Windows setup
         working-directory: desktop
@@ -60,6 +65,11 @@ jobs:
           $app = Get-ChildItem -LiteralPath $installDir -Filter '*.exe' -File |
             Where-Object { $_.Name -in @('frameguard-desktop.exe', 'FrameGuard.exe') }
           if (-not $app) { throw "Setup did not install the FrameGuard executable." }
+          foreach ($resource in @('7z.exe', '7z.dll', 'License.txt')) {
+            if (-not (Test-Path -LiteralPath (Join-Path $installDir "archive-tool\$resource"))) {
+              throw "Setup did not install archive-tool\$resource."
+            }
+          }
           Write-Host "Installed $($app.Name)"
           Get-FileHash -LiteralPath $installers[0].FullName -Algorithm SHA256
       - uses: actions/upload-artifact@v4

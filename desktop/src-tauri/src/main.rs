@@ -1,5 +1,7 @@
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
+mod runtime;
+
 use std::{
     io::Write,
     sync::{
@@ -49,6 +51,7 @@ fn failure(error: impl std::fmt::Display) -> String {
 #[tauri::command]
 async fn open_recording(app: AppHandle) -> Result<Option<OpenedVideo>, String> {
     tauri::async_runtime::spawn_blocking(move || {
+        let tools = runtime::tools(&app)?;
         let Some(file) = app
             .dialog()
             .file()
@@ -58,7 +61,8 @@ async fn open_recording(app: AppHandle) -> Result<Option<OpenedVideo>, String> {
             return Ok(None);
         };
         let video =
-            frameguard_core::open_video(file.into_path().map_err(failure)?).map_err(failure)?;
+            frameguard_core::open_video_with_tools(file.into_path().map_err(failure)?, tools)
+                .map_err(failure)?;
         let state = app.state::<DesktopState>();
         let mut session = state.lock().map_err(failure)?;
         if session.active.is_some() {
@@ -87,6 +91,7 @@ async fn scan_recording(
     scan_id: String,
     options: ScanOptions,
 ) -> Result<ScanReport, String> {
+    runtime::tools(&app)?;
     let cancelled = Arc::new(AtomicBool::new(false));
     let video = {
         let state = app.state::<DesktopState>();
@@ -149,6 +154,7 @@ fn cancel_scan(app: AppHandle, scan_id: String) -> Result<bool, String> {
 
 #[tauri::command]
 async fn inspect_frame(app: AppHandle, generation: u64, seconds: f64) -> Result<String, String> {
+    runtime::tools(&app)?;
     let video = {
         let state = app.state::<DesktopState>();
         let session = state.lock().map_err(failure)?;
@@ -234,8 +240,11 @@ async fn save_export(app: AppHandle, filename: String, contents: String) -> Resu
 fn main() {
     tauri::Builder::default()
         .manage(DesktopState::default())
+        .manage(runtime::RuntimeState::default())
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
+            runtime::runtime_status,
+            runtime::install_runtime,
             open_recording,
             scan_recording,
             cancel_scan,

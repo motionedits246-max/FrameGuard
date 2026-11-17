@@ -4,6 +4,7 @@
   const $ = selector => document.querySelector(selector);
   const $$ = selector => [...document.querySelectorAll(selector)];
   const bridge = window.__TAURI__;
+  document.documentElement.classList.toggle('desktop', Boolean(bridge));
   const invoke = (command, arguments_) => bridge?.core.invoke(command, arguments_)
     ?? Promise.reject(new Error('Open FrameGuard Desktop to use this action.'));
   const icon = name => '<i data-lucide="' + name + '" aria-hidden="true"></i>';
@@ -27,7 +28,7 @@
     video: null, fps: 1, rangeMode: 'whole', start: 0, end: 0, phrases: [],
     rules: [], findings: [], selected: null, filter: 'all', reveal: false,
     cliFormat: 'json', exportFormat: 'json', exportMask: true, view: 'scan',
-    scanned: false, opening: false,
+    scanned: false, opening: false, ready: false,
   };
   const job = { id: null, status: 'idle', done: 0, total: 0, reused: 0, time: 0, findings: 0 };
   let nextRuleId = 1;
@@ -36,6 +37,7 @@
   let editingRuleId = null;
   let testVersion = 0;
   let restored = false;
+  let canInstallRuntime = false;
 
   try {
     const saved = JSON.parse(localStorage.getItem(rulesKey));
@@ -475,6 +477,7 @@
   }
 
   function go(view) {
+    if (!state.ready) return;
     state.view = view;
     for (const tab of $$('.tab')) {
       const active = tab.dataset.view === view;
@@ -496,7 +499,7 @@
   }
 
   $('#openBtn').addEventListener('click', async () => {
-    if (state.opening || job.status === 'running') return;
+    if (!state.ready || state.opening || job.status === 'running') return;
     state.opening = true;
     renderScan();
     try {
@@ -704,24 +707,109 @@
     if (close) close.closest('dialog').close();
   });
 
-  async function initialize() {
+  function bindWindowControls() {
+    const appWindow = bridge?.window?.getCurrentWindow();
+    if (!appWindow) return;
+    const maximize = $('#windowMaximize');
+    const refresh = async () => {
+      const expanded = await appWindow.isMaximized();
+      const label = expanded ? 'Restore' : 'Maximize';
+      if (maximize.title === label) return;
+      maximize.title = label;
+      maximize.setAttribute('aria-label', label);
+      maximize.innerHTML = icon(expanded ? 'copy' : 'square');
+      drawIcons();
+    };
+    $('#windowControls').hidden = false;
+    $('#windowMinimize').addEventListener('click', () => appWindow.minimize().catch(toast));
+    maximize.addEventListener('click', () => appWindow.toggleMaximize().then(refresh).catch(toast));
+    $('#windowClose').addEventListener('click', () => appWindow.close().catch(toast));
+    appWindow.onResized(() => refresh().catch(() => {})).catch(toast);
+    refresh().catch(toast);
+  }
+
+  function setupProgress(stage, percent, downloaded, total) {
+    const known = Number.isFinite(percent);
+    const bar = $('#setupBar');
+    $('#setupProgress').hidden = false;
+    if ($('#setupStage').textContent !== stage) $('#setupStage').textContent = stage;
+    $('#setupPercent').textContent = known ? percent + '%' : '';
+    $('#setupFill').style.width = known ? percent + '%' : '';
+    bar.classList.toggle('is-indeterminate', !known);
+    if (known) bar.setAttribute('aria-valuenow', String(percent));
+    else bar.removeAttribute('aria-valuenow');
+    $('#setupBytes').textContent = total
+      ? (downloaded / 1e6).toFixed(1) + ' / ' + (total / 1e6).toFixed(1) + ' MB downloaded'
+      : '';
+  }
+
+  function setupError(error) {
+    $('#setupError').textContent = error ? String(error) : '';
+    $('#setupError').hidden = !error;
+  }
+
+  async function showDashboard() {
+    if (bridge && !restored) {
+      try {
+        state.rules = await invoke('default_wordlist');
+        nextRuleId = Math.max(0, ...state.rules.map(rule => rule.id)) + 1;
+      } catch (error) { toast(error); }
+    }
+    state.ready = true;
+    $('#setupView').hidden = true;
+    $('.app').classList.remove('is-setup');
+    $('#statusPill').hidden = false;
+    $('#tabs').hidden = false;
+    $('#dashboard').hidden = false;
     renderAll();
+  }
+
+  async function prepareRuntime(install = false) {
+    const button = $('#setupButton');
+    button.disabled = true;
+    setupError();
+    setupProgress(install ? 'Starting scanner setup' : 'Checking scanner components');
+    try {
+      const status = await invoke(install ? 'install_runtime' : 'runtime_status');
+      if (status.ready) {
+        await showDashboard();
+        return;
+      }
+      canInstallRuntime = status.can_install;
+      $('#setupIntro').textContent = canInstallRuntime
+        ? 'Download the scanner components once to start scanning on this device.'
+        : 'Install FFmpeg, ffprobe and Tesseract with English recognition data, then check again.';
+      $('#setupButton span').textContent = canInstallRuntime ? 'Download & install' : 'Check again';
+      setupError(status.detail);
+    } catch (error) {
+      $('#setupButton span').textContent = install ? 'Retry installation' : 'Check again';
+      setupError(error);
+    } finally {
+      $('#setupProgress').hidden = true;
+      button.disabled = false;
+    }
+  }
+
+  async function initialize() {
+    drawIcons();
+    bindWindowControls();
     if (!bridge) {
+      await showDashboard();
       $('#scanNote').textContent = 'Open in FrameGuard Desktop to scan recordings.';
       return;
     }
-    try {
-      await bridge.event.listen('scan-progress', ({ payload }) => {
+    $('#setupButton').addEventListener('click', () => prepareRuntime(canInstallRuntime));
+    await Promise.all([
+      bridge.event.listen('scan-progress', ({ payload }) => {
         if (job.status !== 'running' || payload.scan_id !== job.id) return;
         Object.assign(job, payload.progress);
         renderProgress();
-      });
-      if (!restored) {
-        state.rules = await invoke('default_wordlist');
-        nextRuleId = Math.max(0, ...state.rules.map(rule => rule.id)) + 1;
-        renderAll();
-      }
-    } catch (error) { toast(error); }
+      }),
+      bridge.event.listen('setup-progress', ({ payload }) => {
+        setupProgress(payload.stage, payload.percent, payload.downloaded, payload.total);
+      }),
+    ]).catch(toast);
+    await prepareRuntime();
   }
 
   initialize();

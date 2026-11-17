@@ -14,19 +14,52 @@
     <span class="orb orb-a"></span><span class="orb orb-b"></span><span class="orb orb-c"></span>
   </div>
 
-  <div class="app">
-    <header class="titlebar">
-      <div class="brand">
-        <span class="brand-mark"><i data-lucide="shield-check" aria-hidden="true"></i></span>
-        <span>FrameGuard</span>
+  <div class="app is-setup">
+    <header class="titlebar" data-tauri-drag-region>
+      <div class="brand" data-tauri-drag-region>
+        <span class="brand-mark" data-tauri-drag-region><i data-lucide="shield-check" aria-hidden="true"></i></span>
+        <span data-tauri-drag-region>FrameGuard</span>
       </div>
-      <div class="file-pill" id="titleFile"></div>
-      <div class="pill" id="statusPill" role="status">
+      <div class="file-pill" id="titleFile" data-tauri-drag-region></div>
+      <div class="pill" id="statusPill" role="status" hidden>
         <i data-lucide="lock" aria-hidden="true"></i><span id="statusText">Local only</span>
+      </div>
+      <div class="window-controls" id="windowControls" role="group" aria-label="Window controls" hidden>
+        <button id="windowMinimize" type="button" title="Minimize" aria-label="Minimize"><i data-lucide="minus" aria-hidden="true"></i></button>
+        <button id="windowMaximize" type="button" title="Maximize" aria-label="Maximize"><i data-lucide="square" aria-hidden="true"></i></button>
+        <button id="windowClose" class="window-close" type="button" title="Close" aria-label="Close"><i data-lucide="x" aria-hidden="true"></i></button>
       </div>
     </header>
 
-    <nav class="tabs" id="tabs" role="tablist" aria-label="FrameGuard sections">
+    <main class="setup-view" id="setupView" aria-labelledby="setupTitle">
+      <section class="setup-card card">
+        <div class="setup-mark"><i data-lucide="shield-check" aria-hidden="true"></i></div>
+        <h1 id="setupTitle">Set up local scanning</h1>
+        <p class="setup-intro" id="setupIntro">Checking the scanner components on this device.</p>
+        <ul class="setup-components" aria-label="Required scanner components">
+          <li>
+            <i data-lucide="film" aria-hidden="true"></i>
+            <div><strong>FFmpeg and ffprobe</strong><span>Read MP4 details and extract frames.</span></div>
+          </li>
+          <li>
+            <i data-lucide="scan-text" aria-hidden="true"></i>
+            <div><strong>Tesseract OCR</strong><span>Read text in video frames with English recognition data.</span></div>
+          </li>
+        </ul>
+        <div class="setup-progress" id="setupProgress" hidden>
+          <div class="run-head"><strong id="setupStage" aria-live="polite"></strong><span id="setupPercent" class="mono"></span></div>
+          <div class="progress" id="setupBar" role="progressbar" aria-label="Scanner setup progress" aria-valuemin="0" aria-valuemax="100"><span id="setupFill"></span></div>
+          <p class="muted small" id="setupBytes"></p>
+        </div>
+        <p class="setup-error" id="setupError" role="alert" hidden></p>
+        <div class="setup-actions">
+          <button class="btn primary lg" id="setupButton" type="button" disabled><i data-lucide="download" aria-hidden="true"></i><span>Download &amp; install</span></button>
+          <p class="small muted">Your recordings stay on this device.</p>
+        </div>
+      </section>
+    </main>
+
+    <nav class="tabs" id="tabs" role="tablist" aria-label="FrameGuard sections" hidden>
       <button class="tab" role="tab" id="tab-scan" data-view="scan" aria-controls="view-scan" aria-selected="true" type="button">
         <i data-lucide="scan-search" aria-hidden="true"></i><span>Scan</span>
       </button>
@@ -45,7 +78,7 @@
       </p>
     </nav>
 
-    <main>
+    <main id="dashboard" hidden>
       <!-- Scan -->
       <section class="view" id="view-scan" role="tabpanel" aria-labelledby="tab-scan">
         <div class="view-head">

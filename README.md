@@ -12,27 +12,13 @@ FrameGuard finds sensitive text in local screen recordings before you publish or
 
 ## Windows setup
 
-Install stable Rust and the Tauri Windows prerequisites, including the C++ build tools and WebView2. [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/)
+Run the Windows x64 FrameGuard setup EXE and launch the app. In **Set up local scanning**, select **Download & install**. FrameGuard downloads about 66 MB of scanner components and opens the dashboard after checking video decoding and English OCR.
 
-Install FFmpeg and Tesseract with English OCR data. Put `ffmpeg`, `ffprobe`, and `tesseract` on your PATH. You can also point `FRAMEGUARD_FFMPEG`, `FRAMEGUARD_FFPROBE`, and `FRAMEGUARD_TESSERACT` at the corresponding executables.
-
-Check the tools from PowerShell.
-
-```powershell
-ffmpeg -version
-ffprobe -version
-tesseract --list-langs
-```
-
-Run the desktop interface from the repository root.
-
-```powershell
-cargo run --locked -p frameguard-desktop --features custom-protocol
-```
+The components live under your Windows user profile. Scans work offline after setup. The Windows CLI and TUI can use the same components.
 
 ## CLI and terminal
 
-The following commands run from the repository root and work wherever the Rust and OCR prerequisites are installed.
+The following commands run from the repository root. If you use the standalone CLI without completing desktop setup, install FFmpeg, ffprobe, and Tesseract with the desired language data. The CLI also accepts `FRAMEGUARD_FFMPEG`, `FRAMEGUARD_FFPROBE`, and `FRAMEGUARD_TESSERACT` executable overrides.
 
 ```powershell
 cargo run --locked -p frameguard-cli -- scan "C:\Videos\demo.mp4" --fps 1 --format json --output findings.json
@@ -46,6 +32,13 @@ The terminal footer lists its keyboard shortcuts. Use **F2** to set a video path
 
 ## Development
 
+To build the Windows desktop app from source, install stable Rust, 7-Zip and the [Tauri Windows prerequisites](https://v2.tauri.app/start/prerequisites/), then run:
+
+```powershell
+./desktop/scripts/prepare-windows-resources.ps1
+cargo run --locked -p frameguard-desktop --features custom-protocol
+```
+
 - `crates/frameguard-core` reads video metadata, samples frames using FFmpeg, runs Tesseract, groups consecutive hits, and writes reports.
 - `crates/frameguard-cli` provides the `frameguard` command and terminal interface.
 - `desktop/src-tauri` provides native dialogs, scan progress events, cancellation, and scoped access to selected recordings.
@@ -57,4 +50,4 @@ cargo fmt --all --check
 cargo clippy --locked --all-targets -- -D warnings
 ```
 
-Sampling and OCR can miss text, especially when it is small or appears between frames. Review the footage before sharing it. Video blur export, packaged OCR dependencies, and signed releases are future work.
+Sampling and OCR can miss text, especially when it is small or appears between frames. Review the footage before sharing it. Video blur export and signed releases are future work.

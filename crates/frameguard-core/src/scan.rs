@@ -14,7 +14,7 @@ use anyhow::{anyhow, bail, Context, Result};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    media::{diagnostic, ffmpeg, tesseract},
+    media::{diagnostic, ScanTools},
     rules::{matchers, Matcher},
     Risk, Rule, Video, VideoMetadata,
 };
@@ -142,7 +142,9 @@ pub fn scan(
         return Ok(report);
     }
 
-    let mut decoder = ffmpeg()
+    let mut decoder = video
+        .tools
+        .ffmpeg()
         .args([
             "-hide_banner",
             "-loglevel",
@@ -172,7 +174,7 @@ pub fn scan(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .context("Starting FFmpeg. Install it or set FRAMEGUARD_FFMPEG")?;
+        .context("Starting FFmpeg")?;
     let pipe = decoder.stdout.take().expect("piped FFmpeg output");
     let stderr = decoder.stderr.take().expect("piped FFmpeg errors");
     let (tx, rx) = mpsc::sync_channel(1);
@@ -196,6 +198,7 @@ pub fn scan(
     let result = scan_frames(
         &rx,
         &matchers,
+        &video.tools,
         options,
         cancelled,
         &mut report,
@@ -229,6 +232,7 @@ type MatchKey = (usize, String, i32, i32);
 fn scan_frames(
     frames: &Receiver<Result<Frame>>,
     matchers: &[Matcher],
+    tools: &ScanTools,
     options: &ScanOptions,
     cancelled: &AtomicBool,
     report: &mut ScanReport,
@@ -251,7 +255,7 @@ fn scan_frames(
         if cache.contains_key(&hash) {
             report.progress.reused += 1;
         } else {
-            let Some(lines) = read_ocr(&frame, &options.language, cancelled)
+            let Some(lines) = read_ocr(tools, &frame, &options.language, cancelled)
                 .with_context(|| format!("Reading text at {time:.2} seconds"))?
             else {
                 report.status = ScanStatus::Cancelled;
@@ -398,8 +402,14 @@ fn read_token(reader: &mut impl BufRead) -> Result<Option<String>> {
     }
 }
 
-fn read_ocr(frame: &Frame, language: &str, cancelled: &AtomicBool) -> Result<Option<Vec<OcrLine>>> {
-    let mut child = tesseract()
+fn read_ocr(
+    tools: &ScanTools,
+    frame: &Frame,
+    language: &str,
+    cancelled: &AtomicBool,
+) -> Result<Option<Vec<OcrLine>>> {
+    let mut child = tools
+        .tesseract()
         .args([
             "stdin", "stdout", "-l", language, "--psm", "6", "--dpi", "300", "tsv",
         ])
@@ -408,7 +418,7 @@ fn read_ocr(frame: &Frame, language: &str, cancelled: &AtomicBool) -> Result<Opt
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .context("Starting Tesseract. Install it or set FRAMEGUARD_TESSERACT")?;
+        .context("Starting Tesseract")?;
     let mut input = child.stdin.take().expect("piped OCR input");
     let output = child.stdout.take().expect("piped OCR output");
     let errors = child.stderr.take().expect("piped OCR errors");

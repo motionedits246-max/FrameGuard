@@ -2,7 +2,7 @@
 
 FrameGuard scans local MP4 screen recordings for sensitive text before you publish or share them. Use it to catch credentials, email addresses, client names, private asset filenames, or phrases you define.
 
-[Download FrameGuard](https://github.com/motionedits246-max/FrameGuard/releases/latest) · [Application source](https://github.com/motionedits246-max/FrameGuard/tree/feature/local-ocr) · [Website source](https://github.com/motionedits246-max/FrameGuard/tree/website)
+[Download FrameGuard](https://github.com/motionedits246-max/FrameGuard/releases/latest) · [Application source](https://github.com/motionedits246-max/FrameGuard/tree/main) · [Website source](https://github.com/motionedits246-max/FrameGuard/tree/website)
 
 ## Choose a build
 
@@ -60,7 +60,7 @@ Recordings and OCR results stay on your device. The optional desktop personaliza
 
 ## Build from source
 
-The [application branch](https://github.com/motionedits246-max/FrameGuard/tree/feature/local-ocr) contains the Rust scanner, terminal app, and Tauri desktop frontend. Install stable Rust, the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) for the desktop build, and FFmpeg and Tesseract for local scans.
+The [main branch](https://github.com/motionedits246-max/FrameGuard/tree/main) contains the Rust scanner, terminal app, and Tauri desktop frontend. Install stable Rust, the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) for the desktop build, and FFmpeg and Tesseract for local scans.
 
 ```sh
 cargo test --locked

@@ -83,7 +83,7 @@ with tempfile.TemporaryDirectory(prefix="frameguard-picker-test-") as temp:
         return windows[-1] if windows else None
 
     def picker_key(window, *keys):
-        subprocess.run(["xdotool", "windowfocus", "--sync", window], check=True)
+        subprocess.run(["xdotool", "windowactivate", "--sync", window], check=True)
         subprocess.run(["xdotool", "key", "--clearmodifiers", *keys], check=True)
 
     try:
@@ -131,6 +131,7 @@ with tempfile.TemporaryDirectory(prefix="frameguard-picker-test-") as temp:
         ))
         print("Real file picker opened, cancelled twice, reopened, selected an MP4, and scanned it.")
     except BaseException:
+        subprocess.run(["import", "-window", "root", "/tmp/frameguard-picker-failure.png"], check=False)
         if session:
             print(javascript("return document.body.innerText;")[-6000:])
         subprocess.run(["xdotool", "search", "--onlyvisible", "--name", "."], check=False)

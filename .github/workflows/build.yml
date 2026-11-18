@@ -123,7 +123,7 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo apt-get update -q
-          sudo apt-get install -y --no-install-recommends build-essential pkg-config libwebkit2gtk-4.1-dev libssl-dev libxdo-dev librsvg2-dev xvfb xauth dbus-x11 xdotool webkit2gtk-driver
+          sudo apt-get install -y --no-install-recommends build-essential pkg-config libwebkit2gtk-4.1-dev libssl-dev libxdo-dev librsvg2-dev xvfb xauth dbus-x11 xdotool webkit2gtk-driver openbox imagemagick
       - name: Set up Rust
         run: rustup toolchain install stable --profile minimal
       - name: Build desktop package
@@ -196,10 +196,17 @@ jobs:
       - name: Test opening and cancelling the real file picker
         run: sh desktop/scripts/check-linux-open.sh
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: FrameGuard-release-linux
           path: release-files/
           if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: FrameGuard-linux-picker-diagnostic
+          path: /tmp/frameguard-picker-failure.png
+          if-no-files-found: ignore
 
   kali:
     name: Kali Linux file picker regression
@@ -217,7 +224,7 @@ jobs:
           docker run --rm -v "$PWD:/source:ro" kalilinux/kali-rolling bash -ec '
             export DEBIAN_FRONTEND=noninteractive
             apt-get update -q
-            apt-get install -y --no-install-recommends python3 dbus-x11 xvfb xauth xdotool webkit2gtk-driver fonts-dejavu-core /source/release-files/FrameGuard_Linux_x64_Desktop.deb
+            apt-get install -y --no-install-recommends python3 dbus-x11 xvfb xauth xdotool webkit2gtk-driver openbox imagemagick fonts-dejavu-core /source/release-files/FrameGuard_Linux_x64_Desktop.deb
             useradd -m -s /bin/bash frameguard-test
             runuser -u frameguard-test -- sh /source/desktop/scripts/check-linux-open.sh
           '

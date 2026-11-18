@@ -138,7 +138,9 @@ with tempfile.TemporaryDirectory(prefix="frameguard-picker-test-") as temp:
         eventually(lambda: javascript(
             "return document.getElementById('fileName').textContent === 'file-picker-fixture.mp4';"
         ))
-        eventually(lambda: javascript("return document.getElementById('videoPreview').readyState >= 2;"))
+        eventually(lambda: javascript("return document.getElementById('videoPreview').readyState >= 1;"))
+        click("#playVideo")
+        eventually(lambda: javascript("return document.getElementById('videoPreview').currentTime > 0;"))
         click("#startScan")
         eventually(lambda: javascript(
             "return !document.getElementById('scanSummary').hidden"
@@ -149,6 +151,12 @@ with tempfile.TemporaryDirectory(prefix="frameguard-picker-test-") as temp:
         subprocess.run(["import", "-window", "root", "/tmp/frameguard-picker-failure.png"], check=False)
         if session:
             print(javascript("return document.body.innerText;")[-6000:])
+            print(javascript(
+                "const video = document.getElementById('videoPreview');"
+                "return {src: video.currentSrc, readyState: video.readyState,"
+                " networkState: video.networkState, time: video.currentTime,"
+                " error: video.error && {code: video.error.code, message: video.error.message}};"
+            ))
         subprocess.run(["xdotool", "search", "--onlyvisible", "--name", "."], check=False)
         log.flush()
         log.seek(0)

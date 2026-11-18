@@ -1,5 +1,6 @@
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
+mod dialogs;
 mod preview;
 mod profile;
 mod runtime;
@@ -16,7 +17,6 @@ use base64::{engine::general_purpose::STANDARD, Engine};
 use frameguard_core::{Progress, Rule, ScanOptions, ScanReport, Video, VideoMetadata};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, RunEvent};
-use tauri_plugin_dialog::DialogExt;
 
 #[derive(Default)]
 struct Session {
@@ -53,19 +53,12 @@ fn failure(error: impl std::fmt::Display) -> String {
 
 #[tauri::command]
 async fn open_recording(app: AppHandle) -> Result<Option<OpenedVideo>, String> {
+    let tools = runtime::tools(&app)?;
+    let Some(path) = dialogs::choose_file(&app, None).await? else {
+        return Ok(None);
+    };
     tauri::async_runtime::spawn_blocking(move || {
-        let tools = runtime::tools(&app)?;
-        let Some(file) = app
-            .dialog()
-            .file()
-            .add_filter("MP4 video", &["mp4"])
-            .blocking_pick_file()
-        else {
-            return Ok(None);
-        };
-        let video =
-            frameguard_core::open_video_with_tools(file.into_path().map_err(failure)?, tools)
-                .map_err(failure)?;
+        let video = frameguard_core::open_video_with_tools(path, tools).map_err(failure)?;
         let state = app.state::<DesktopState>();
         let mut session = state.lock().map_err(failure)?;
         if session.active.is_some() {
@@ -202,28 +195,22 @@ fn test_wordlist_rule(rule: Rule, sample: String) -> Result<Vec<[usize; 2]>, Str
 
 #[tauri::command]
 async fn save_export(app: AppHandle, filename: String, contents: String) -> Result<bool, String> {
+    let extension = filename.rsplit('.').next().unwrap_or_default();
+    if !matches!(extension, "json" | "csv") {
+        return Err("Choose JSON or CSV for the export.".into());
+    }
+    let suggested = if filename == "wordlist.json" {
+        "wordlist.json"
+    } else if extension == "csv" {
+        "frameguard-findings.csv"
+    } else {
+        "frameguard-findings.json"
+    };
+    let Some(target) = dialogs::choose_file(&app, Some((suggested, extension))).await? else {
+        return Ok(false);
+    };
     tauri::async_runtime::spawn_blocking(move || {
         let extension = filename.rsplit('.').next().unwrap_or_default();
-        if !matches!(extension, "json" | "csv") {
-            return Err("Choose JSON or CSV for the export.".into());
-        }
-        let suggested = if filename == "wordlist.json" {
-            "wordlist.json"
-        } else if extension == "csv" {
-            "frameguard-findings.csv"
-        } else {
-            "frameguard-findings.json"
-        };
-        let Some(file) = app
-            .dialog()
-            .file()
-            .set_file_name(suggested)
-            .add_filter("FrameGuard export", &[extension])
-            .blocking_save_file()
-        else {
-            return Ok(false);
-        };
-        let target = file.into_path().map_err(failure)?;
         if target
             .extension()
             .and_then(|part| part.to_str())

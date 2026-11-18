@@ -90,7 +90,7 @@ fn install(
         });
     };
     let installed = data.join(WINDOWS_RUNTIME_DIR);
-    let tools = ScanTools::managed(&installed);
+    let tools = ScanTools::installed(data);
     if tools.has_managed_files() && tools.verify().is_ok() {
         progress("Scanner components ready", 100, DOWNLOAD_BYTES);
         return Ok(());
@@ -112,9 +112,13 @@ fn install(
         .prefix(".scanner-setup-")
         .tempdir_in(data)
         .context("Creating a temporary scanner setup folder")?;
-    let ready = staging.path().join("ready");
-    let ffmpeg_dir = ready.join("ffmpeg");
-    let tesseract_dir = ready.join("tesseract");
+    fs::create_dir_all(&installed).context("Creating the scanner runtime folder")?;
+    let ready = tempfile::Builder::new()
+        .prefix("build-")
+        .tempdir_in(&installed)
+        .context("Creating a new scanner runtime")?;
+    let ffmpeg_dir = ready.path().join("ffmpeg");
+    let tesseract_dir = ready.path().join("tesseract");
     let ffmpeg_file = staging.path().join("ffmpeg.7z");
     let ocr_file = staging.path().join("tesseract-setup.exe");
     let language_file = staging.path().join("eng.traineddata");
@@ -175,14 +179,30 @@ fn install(
     .context("Installing English recognition data")?;
 
     progress("Checking video decoding and OCR", 96, downloaded);
-    ScanTools::managed(&ready)
+    ScanTools::managed(ready.path())
         .verify()
         .context("Testing the scanner components")?;
-    if installed.exists() {
-        fs::remove_dir_all(&installed).context("Removing the damaged scanner components")?;
-    }
-    fs::rename(ready, installed).context("Activating the installed scanner components")?;
+    activate_runtime(data, ready).context("Activating the installed scanner components")?;
     progress("Scanner components ready", 100, downloaded);
+    Ok(())
+}
+
+fn activate_runtime(data: &Path, ready: tempfile::TempDir) -> Result<()> {
+    let root = data.join(WINDOWS_RUNTIME_DIR);
+    let name = ready
+        .path()
+        .file_name()
+        .context("Reading the new scanner runtime name")?
+        .to_string_lossy();
+    let mut marker = tempfile::NamedTempFile::new_in(&root)?;
+    marker.write_all(name.as_bytes())?;
+    marker.flush()?;
+    // Executables and DLLs stay at the paths where they were checked. Windows
+    // can hold image files open briefly after the child process exits.
+    marker
+        .persist(root.join("active-runtime"))
+        .map_err(|error| error.error)?;
+    let _ = ready.keep();
     Ok(())
 }
 
@@ -248,11 +268,38 @@ fn extract(tool: &Path, archive: &Path, dir: &Path, mode: &str, files: &[&str]) 
 
 #[cfg(test)]
 mod tests {
-    use std::sync::atomic::AtomicBool;
+    use std::{os::windows::fs::OpenOptionsExt, sync::atomic::AtomicBool};
 
     use frameguard_core::{capture_clip, open_video_with_tools, scan, ScanOptions, ScanStatus};
 
     use super::*;
+
+    #[test]
+    fn activation_keeps_locked_files_in_place() -> Result<()> {
+        let data = tempfile::tempdir()?;
+        let root = data.path().join(WINDOWS_RUNTIME_DIR);
+        fs::create_dir(&root)?;
+        let prepared = tempfile::Builder::new()
+            .prefix("build-")
+            .tempdir_in(&root)?;
+        let path = prepared.path().join("ffmpeg.exe");
+        fs::write(&path, b"runtime fixture")?;
+        let held = OpenOptions::new()
+            .read(true)
+            .share_mode(0x0000_0003)
+            .custom_flags(0x0200_0000)
+            .open(prepared.path())?;
+        assert!(fs::rename(prepared.path(), root.join("moved-runtime")).is_err());
+        let original = prepared.path().to_path_buf();
+        activate_runtime(data.path(), prepared)?;
+        assert!(path.is_file());
+        assert_eq!(
+            fs::read_to_string(root.join("active-runtime"))?,
+            original.file_name().unwrap().to_string_lossy()
+        );
+        drop(held);
+        Ok(())
+    }
 
     #[test]
     fn installs_and_scans_with_managed_tools() -> Result<()> {
@@ -266,7 +313,9 @@ mod tests {
         })?;
         assert_eq!(progress, 100);
 
-        let runtime = data.path().join(WINDOWS_RUNTIME_DIR);
+        let root = data.path().join(WINDOWS_RUNTIME_DIR);
+        let runtime = root.join(fs::read_to_string(root.join("active-runtime"))?);
+        ScanTools::installed(data.path()).verify()?;
         let video = data.path().join("fixture.mp4");
         let output = Command::new(runtime.join("ffmpeg/ffmpeg.exe"))
             .args([

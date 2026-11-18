@@ -40,9 +40,7 @@ fn status(app: &AppHandle, saved: &mut Option<ScanTools>) -> Result<RuntimeStatu
 #[cfg(windows)]
 fn configured_tools(app: &AppHandle) -> Result<ScanTools, String> {
     let root = app.path().app_local_data_dir().map_err(super::failure)?;
-    Ok(ScanTools::managed(
-        &root.join(frameguard_core::WINDOWS_RUNTIME_DIR),
-    ))
+    Ok(ScanTools::installed(&root))
 }
 
 #[cfg(not(windows))]

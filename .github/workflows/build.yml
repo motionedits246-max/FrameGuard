@@ -50,7 +50,7 @@ jobs:
       - name: Check CLI
         run: .\target\release\frameguard.exe --version
       - name: Test first-run setup, OCR and finding clips
-        run: cargo +stable test --locked --release -p frameguard-desktop --features custom-protocol installs_and_scans_with_managed_tools
+        run: cargo +stable test --locked --release -p frameguard-desktop --features custom-protocol
       - uses: actions/upload-artifact@v4
         with:
           name: FrameGuard-Windows-x64
@@ -74,6 +74,22 @@ jobs:
           $app = Get-ChildItem -LiteralPath $installDir -Filter '*.exe' -File |
             Where-Object { $_.Name -in @('frameguard-desktop.exe', 'FrameGuard.exe') }
           if (-not $app) { throw "Setup did not install the FrameGuard executable." }
+          Add-Type -AssemblyName System.Drawing
+          $expected = [System.Drawing.Icon]::new("$PWD\desktop\src-tauri\icons\icon.ico", 32, 32).ToBitmap()
+          $actual = [System.Drawing.Icon]::ExtractAssociatedIcon($installers[0].FullName).ToBitmap()
+          try {
+            if ($expected.Size -ne $actual.Size) { throw "Installer icon size differs from the app icon." }
+            for ($y = 0; $y -lt $expected.Height; $y++) {
+              for ($x = 0; $x -lt $expected.Width; $x++) {
+                if ($expected.GetPixel($x, $y).ToArgb() -ne $actual.GetPixel($x, $y).ToArgb()) {
+                  throw "Installer did not use the FrameGuard application icon."
+                }
+              }
+            }
+          } finally {
+            $expected.Dispose()
+            $actual.Dispose()
+          }
           foreach ($resource in @('7z.exe', '7z.dll', 'License.txt')) {
             if (-not (Test-Path -LiteralPath (Join-Path $installDir "archive-tool\$resource"))) {
               throw "Setup did not install archive-tool\$resource."
@@ -107,7 +123,7 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo apt-get update -q
-          sudo apt-get install -y --no-install-recommends build-essential pkg-config libwebkit2gtk-4.1-dev libssl-dev libxdo-dev librsvg2-dev xvfb xauth
+          sudo apt-get install -y --no-install-recommends build-essential pkg-config libwebkit2gtk-4.1-dev libssl-dev libxdo-dev librsvg2-dev xvfb xauth dbus-x11 xdotool webkit2gtk-driver
       - name: Set up Rust
         run: rustup toolchain install stable --profile minimal
       - name: Build desktop package
@@ -177,11 +193,34 @@ jobs:
             cat /tmp/frameguard-desktop.log
             exit 1
           fi
+      - name: Test opening and cancelling the real file picker
+        run: xvfb-run -a dbus-run-session -- python3 desktop/scripts/check-linux-open.py
       - uses: actions/upload-artifact@v4
         with:
           name: FrameGuard-release-linux
           path: release-files/
           if-no-files-found: error
+
+  kali:
+    name: Kali Linux file picker regression
+    needs: linux
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: FrameGuard-release-linux
+          path: release-files
+      - name: Open an MP4 on Kali Rolling
+        run: |
+          docker run --rm -v "$PWD:/source:ro" kalilinux/kali-rolling bash -ec '
+            export DEBIAN_FRONTEND=noninteractive
+            apt-get update -q
+            apt-get install -y --no-install-recommends python3 dbus-x11 xvfb xauth xdotool webkit2gtk-driver fonts-dejavu-core /source/release-files/FrameGuard_Linux_x64_Desktop.deb
+            useradd -m -s /bin/bash frameguard-test
+            runuser -u frameguard-test -- xvfb-run -a dbus-run-session -- python3 /source/desktop/scripts/check-linux-open.py
+          '
 
   release:
     name: Publish verified downloads
@@ -190,7 +229,7 @@ jobs:
       (github.event_name == 'workflow_dispatch' && inputs.publish_release) ||
       (github.event_name == 'push' && github.ref == 'refs/heads/feature/local-ocr' &&
        startsWith(github.event.head_commit.message, 'Release FrameGuard v'))
-    needs: [core, windows, linux]
+    needs: [core, windows, linux, kali]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -218,8 +257,9 @@ jobs:
             exit 0
           fi
           cat > /tmp/frameguard-release-notes <<'EOF'
-          - Desktop installers and terminal downloads for Windows and Debian-based Linux.
-          - Custom playback controls for flagged clips.
-          - Linux packages include scanner dependencies through apt.
+          - Windows scanner activation keeps checked executables and DLLs in place.
+          - Windows setup and uninstaller use the FrameGuard application icon.
+          - Linux file pickers use the desktop portal with an asynchronous response.
+          - Verified opening, cancelling, selecting, and scanning recordings on Linux.
           EOF
           gh release create "$tag" release-files/* --target "$GITHUB_SHA" --title "FrameGuard $tag" --notes-file /tmp/frameguard-release-notes --latest

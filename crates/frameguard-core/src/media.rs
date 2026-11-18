@@ -316,10 +316,8 @@ impl ScanTools {
         };
         #[cfg(windows)]
         if let Some(dir) = env::var_os("LOCALAPPDATA") {
-            let root = PathBuf::from(dir)
-                .join("com.motionedits.frameguard")
-                .join(WINDOWS_RUNTIME_DIR);
-            let managed = Self::managed(&root);
+            let data = PathBuf::from(dir).join("com.motionedits.frameguard");
+            let managed = Self::installed(&data);
             if managed.has_managed_files() {
                 tools = managed;
             }
@@ -335,6 +333,22 @@ impl ScanTools {
             tools.tessdata = None;
         }
         tools
+    }
+
+    pub fn installed(data: &Path) -> Self {
+        let root = data.join(WINDOWS_RUNTIME_DIR);
+        if let Ok(current) = std::fs::read_to_string(root.join("active-runtime")) {
+            let name = current.trim();
+            if name.starts_with("build-")
+                && name.len() <= 80
+                && name
+                    .bytes()
+                    .all(|c| c.is_ascii_alphanumeric() || c == b'-' || c == b'_')
+            {
+                return Self::managed(&root.join(name));
+            }
+        }
+        Self::managed(&root)
     }
 
     pub fn managed(root: &Path) -> Self {

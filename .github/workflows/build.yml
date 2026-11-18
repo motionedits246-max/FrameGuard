@@ -194,7 +194,7 @@ jobs:
             exit 1
           fi
       - name: Test opening and cancelling the real file picker
-        run: xvfb-run -a dbus-run-session -- python3 desktop/scripts/check-linux-open.py
+        run: sh desktop/scripts/check-linux-open.sh
       - uses: actions/upload-artifact@v4
         with:
           name: FrameGuard-release-linux
@@ -219,7 +219,7 @@ jobs:
             apt-get update -q
             apt-get install -y --no-install-recommends python3 dbus-x11 xvfb xauth xdotool webkit2gtk-driver fonts-dejavu-core /source/release-files/FrameGuard_Linux_x64_Desktop.deb
             useradd -m -s /bin/bash frameguard-test
-            runuser -u frameguard-test -- xvfb-run -a dbus-run-session -- python3 /source/desktop/scripts/check-linux-open.py
+            runuser -u frameguard-test -- sh /source/desktop/scripts/check-linux-open.sh
           '
 
   release:

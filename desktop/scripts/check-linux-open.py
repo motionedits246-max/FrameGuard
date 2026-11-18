@@ -36,9 +36,7 @@ with tempfile.TemporaryDirectory(prefix="frameguard-picker-test-") as temp:
         **os.environ,
         "TAURI_WEBVIEW_AUTOMATION": "true",
         "XDG_CURRENT_DESKTOP": "XFCE",
-        "XDG_RUNTIME_DIR": str(root / "runtime"),
     }
-    Path(environment["XDG_RUNTIME_DIR"]).mkdir(mode=0o700)
     log = (root / "webdriver.log").open("w+")
     process = subprocess.Popen(
         ["WebKitWebDriver", "--port=4444"],
@@ -119,6 +117,9 @@ with tempfile.TemporaryDirectory(prefix="frameguard-picker-test-") as temp:
             check=True,
         )
         picker_key(window, "Return")
+        time.sleep(0.5)
+        if picker_window():
+            picker_key(window, "alt+o")
         eventually(lambda: javascript(
             "return document.getElementById('fileName').textContent === 'file-picker-fixture.mp4';"
         ))
@@ -130,6 +131,9 @@ with tempfile.TemporaryDirectory(prefix="frameguard-picker-test-") as temp:
         ))
         print("Real file picker opened, cancelled twice, reopened, selected an MP4, and scanned it.")
     except BaseException:
+        if session:
+            print(javascript("return document.body.innerText;")[-6000:])
+        subprocess.run(["xdotool", "search", "--onlyvisible", "--name", "."], check=False)
         log.flush()
         log.seek(0)
         print(log.read()[-12000:])

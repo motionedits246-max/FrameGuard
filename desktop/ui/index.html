@@ -1,0 +1,500 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#060a12">
+  <title>FrameGuard - video privacy scanner</title>
+  <meta name="description" content="FrameGuard scans screen recordings locally for sensitive text before you publish.">
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <div class="backdrop" aria-hidden="true">
+    <span class="orb orb-a"></span><span class="orb orb-b"></span><span class="orb orb-c"></span>
+  </div>
+
+  <div class="app is-setup">
+    <header class="titlebar" data-tauri-drag-region>
+      <div class="brand" data-tauri-drag-region>
+        <span class="brand-mark" data-tauri-drag-region><i data-lucide="shield-check" aria-hidden="true"></i></span>
+        <span data-tauri-drag-region>FrameGuard</span>
+      </div>
+      <div class="file-pill" id="titleFile" data-tauri-drag-region></div>
+      <div class="pill" id="statusPill" role="status" hidden>
+        <i data-lucide="lock" aria-hidden="true"></i><span id="statusText">Local only</span>
+      </div>
+      <div class="window-controls" id="windowControls" role="group" aria-label="Window controls" hidden>
+        <button id="windowMinimize" type="button" title="Minimize" aria-label="Minimize"><i data-lucide="minus" aria-hidden="true"></i></button>
+        <button id="windowMaximize" type="button" title="Maximize" aria-label="Maximize"><i data-lucide="square" aria-hidden="true"></i></button>
+        <button id="windowClose" class="window-close" type="button" title="Close" aria-label="Close"><i data-lucide="x" aria-hidden="true"></i></button>
+      </div>
+    </header>
+
+    <main class="setup-view" id="setupView" aria-labelledby="setupTitle">
+      <section class="setup-card card">
+        <div class="setup-mark"><i data-lucide="shield-check" aria-hidden="true"></i></div>
+        <h1 id="setupTitle">Set up local scanning</h1>
+        <p class="setup-intro" id="setupIntro">Checking the scanner components on this device.</p>
+        <ul class="setup-components" aria-label="Required scanner components">
+          <li>
+            <i data-lucide="film" aria-hidden="true"></i>
+            <div><strong>FFmpeg and ffprobe</strong><span>Read MP4 details and extract frames.</span></div>
+          </li>
+          <li>
+            <i data-lucide="scan-text" aria-hidden="true"></i>
+            <div><strong>Tesseract OCR</strong><span>Read text in video frames with English recognition data.</span></div>
+          </li>
+        </ul>
+        <div class="setup-progress" id="setupProgress" hidden>
+          <div class="run-head"><strong id="setupStage" aria-live="polite"></strong><span id="setupPercent" class="mono"></span></div>
+          <div class="progress" id="setupBar" role="progressbar" aria-label="Scanner setup progress" aria-valuemin="0" aria-valuemax="100"><span id="setupFill"></span></div>
+          <p class="muted small" id="setupBytes"></p>
+        </div>
+        <p class="setup-error" id="setupError" role="alert" hidden></p>
+        <div class="setup-actions">
+          <button class="btn primary lg" id="setupButton" type="button" disabled><i data-lucide="download" aria-hidden="true"></i><span>Download &amp; install</span></button>
+          <p class="small muted">Your recordings stay on this device.</p>
+        </div>
+      </section>
+    </main>
+
+    <main class="setup-view profile-view" id="profileView" aria-label="Personalize FrameGuard" hidden>
+      <section class="setup-card profile-card card">
+        <div class="profile-head">
+          <div class="setup-mark"><i data-lucide="list-checks" aria-hidden="true"></i></div>
+          <button class="link" id="profileSkip" type="button">Skip setup</button>
+        </div>
+        <p class="profile-step mono" id="profileStep"></p>
+        <section class="profile-panel" data-profile-panel="role">
+          <h1 id="profileRoleTitle" tabindex="-1">What do you record?</h1>
+          <div class="profile-options" role="radiogroup" aria-labelledby="profileRoleTitle">
+            <label class="profile-option">
+              <input type="radio" name="profileRole" value="editor">
+              <i data-lucide="film" aria-hidden="true"></i><span>Video editing<small>Client projects and media</small></span>
+            </label>
+            <label class="profile-option">
+              <input type="radio" name="profileRole" value="designer">
+              <i data-lucide="monitor" aria-hidden="true"></i><span>Design and content<small>Mockups and brand assets</small></span>
+            </label>
+            <label class="profile-option">
+              <input type="radio" name="profileRole" value="educator">
+              <i data-lucide="type" aria-hidden="true"></i><span>Teaching<small>Lessons and student information</small></span>
+            </label>
+            <label class="profile-option">
+              <input type="radio" name="profileRole" value="business">
+              <i data-lucide="folder-open" aria-hidden="true"></i><span>Business and client work<small>Documents, invoices and demos</small></span>
+            </label>
+            <label class="profile-option">
+              <input type="radio" name="profileRole" value="developer">
+              <i data-lucide="square-terminal" aria-hidden="true"></i><span>Development<small>Code, terminals and walkthroughs</small></span>
+            </label>
+            <label class="profile-option">
+              <input type="radio" name="profileRole" value="other">
+              <i data-lucide="plus" aria-hidden="true"></i><span>Something else<small>Choose your own keywords</small></span>
+            </label>
+          </div>
+        </section>
+        <section class="profile-panel" data-profile-panel="topics" hidden>
+          <h1 id="profileTopicsTitle" tabindex="-1">What should FrameGuard watch for?</h1>
+          <div class="profile-options profile-topics" role="group" aria-labelledby="profileTopicsTitle">
+            <label class="profile-option">
+              <input type="checkbox" name="profileTopic" value="work" checked>
+              <i data-lucide="folder-open" aria-hidden="true"></i><span>Private work<small>Project names, asset filenames and unpublished labels</small></span>
+            </label>
+            <label class="profile-option">
+              <input type="checkbox" name="profileTopic" value="personal">
+              <i data-lucide="type" aria-hidden="true"></i><span>Personal details<small>Contact and identity information</small></span>
+            </label>
+            <label class="profile-option">
+              <input type="checkbox" name="profileTopic" value="access">
+              <i data-lucide="lock" aria-hidden="true"></i><span>Account access<small>Recovery codes and access links</small></span>
+            </label>
+          </div>
+        </section>
+        <section class="profile-panel" data-profile-panel="review" hidden>
+          <h1 tabindex="-1">Review your keywords</h1>
+          <p class="setup-intro" id="profileNote" role="status"></p>
+          <div class="profile-progress" id="profileProgress" hidden>
+            <div class="progress is-indeterminate" role="progressbar" aria-label="Loading keyword suggestions"><span></span></div>
+          </div>
+          <div id="profileResults" hidden>
+            <div class="profile-terms" id="profileTerms" role="group" aria-label="Suggested keywords"></div>
+            <fieldset class="profile-custom">
+              <legend>Add up to three keywords</legend>
+              <p class="muted small" id="profileCustomHelp">Use text that appears on screen, such as client names and asset filenames.</p>
+              <input type="text" aria-label="Custom keyword 1" maxlength="90" autocomplete="off" spellcheck="false">
+              <input type="text" aria-label="Custom keyword 2" maxlength="90" autocomplete="off" spellcheck="false">
+              <input type="text" aria-label="Custom keyword 3" maxlength="90" autocomplete="off" spellcheck="false">
+            </fieldset>
+          </div>
+        </section>
+        <div class="profile-footer">
+          <button class="btn" id="profileBack" type="button" hidden>Back</button>
+          <button class="btn primary" id="profileNext" type="button" disabled>
+            <span>Continue</span><i data-lucide="arrow-right" aria-hidden="true"></i>
+          </button>
+        </div>
+      </section>
+    </main>
+
+    <nav class="tabs" id="tabs" role="tablist" aria-label="FrameGuard sections" hidden>
+      <button class="tab" role="tab" id="tab-scan" data-view="scan" aria-controls="view-scan" aria-selected="true" type="button">
+        <i data-lucide="scan-search" aria-hidden="true"></i><span>Scan</span>
+      </button>
+      <button class="tab" role="tab" id="tab-findings" data-view="findings" aria-controls="view-findings" aria-selected="false" type="button" tabindex="-1">
+        <i data-lucide="triangle-alert" aria-hidden="true"></i><span>Findings</span><span class="count" id="navCount" hidden>0</span>
+      </button>
+      <button class="tab" role="tab" id="tab-rules" data-view="rules" aria-controls="view-rules" aria-selected="false" type="button" tabindex="-1">
+        <i data-lucide="list-checks" aria-hidden="true"></i><span>Rules</span>
+      </button>
+      <button class="tab" role="tab" id="tab-automate" data-view="automate" aria-controls="view-automate" aria-selected="false" type="button" tabindex="-1">
+        <i data-lucide="square-terminal" aria-hidden="true"></i><span>Terminal &amp; CLI</span>
+      </button>
+      <p class="rail-note">
+        <i data-lucide="cpu" aria-hidden="true"></i>
+        <span>OCR and playback run locally.</span>
+      </p>
+    </nav>
+
+    <main id="dashboard" hidden>
+      <!-- Scan -->
+      <section class="view" id="view-scan" role="tabpanel" aria-labelledby="tab-scan">
+        <div class="view-head">
+          <div>
+            <h1>Scan a recording</h1>
+            <p>Find sensitive text in a screen recording before you publish it.</p>
+          </div>
+        </div>
+
+        <div class="grid two">
+          <div class="card video-card">
+            <div class="frame">
+              <p id="videoPlaceholder" class="frame-note">Open an MP4 to preview your recording.</p>
+              <video id="videoPreview" playsinline preload="metadata" aria-label="Recording preview" hidden></video>
+            </div>
+            <div class="transport" aria-label="Video playback">
+              <button class="icon-btn" id="playVideo" type="button" aria-label="Play video"><i data-lucide="play" aria-hidden="true"></i></button>
+              <input type="range" id="videoSeek" min="0" max="30" step="0.01" value="0" aria-label="Seek video">
+              <output id="videoTime" for="videoSeek" class="mono">00:00 / 00:30</output>
+            </div>
+            <div class="video-meta">
+              <div class="file">
+                <i data-lucide="film" aria-hidden="true"></i><span id="fileName"></span>
+                <span class="tag" id="sourceTag" hidden>Local recording</span>
+              </div>
+              <button class="btn" id="openBtn" type="button"><i data-lucide="folder-open" aria-hidden="true"></i>Open video</button>
+            </div>
+            <dl class="stats">
+              <div><dt><i data-lucide="clock" aria-hidden="true"></i>Duration</dt><dd id="statDuration"></dd></div>
+              <div><dt><i data-lucide="monitor" aria-hidden="true"></i>Resolution</dt><dd id="statRes"></dd></div>
+              <div><dt><i data-lucide="gauge" aria-hidden="true"></i>Source rate</dt><dd id="statFps"></dd></div>
+            </dl>
+          </div>
+
+          <div class="card stack">
+            <fieldset class="group">
+              <legend>Sampling rate (independent of the source frame rate)</legend>
+              <div class="fps-row">
+                <div class="seg">
+                  <label><input type="radio" name="fps" value="0.5"><span>0.5</span></label>
+                  <label><input type="radio" name="fps" value="1"><span>1</span></label>
+                  <label><input type="radio" name="fps" value="2"><span>2</span></label>
+                  <label><input type="radio" name="fps" value="5"><span>5</span></label>
+                </div>
+                <label class="custom-fps">Custom
+                  <input type="number" id="fpsCustom" min="0.1" max="30" step="0.1" inputmode="decimal">
+                  FPS
+                </label>
+              </div>
+            </fieldset>
+
+            <fieldset class="group">
+              <legend>Scan range</legend>
+              <div class="seg">
+                <label><input type="radio" name="rangeMode" value="whole"><span>Whole video</span></label>
+                <label><input type="radio" name="rangeMode" value="range"><span>Time range</span></label>
+              </div>
+              <div class="range-fields" id="rangeFields" hidden>
+                <label><span>Start <output id="rStartOut" for="rStart"></output></span>
+                  <input type="range" id="rStart" min="0" step="0.01"></label>
+                <label><span>End <output id="rEndOut" for="rEnd"></output></span>
+                  <input type="range" id="rEnd" min="0" step="0.01"></label>
+              </div>
+            </fieldset>
+
+            <div class="group">
+              <form class="phrase-form" id="phraseForm">
+                <label class="sr-only" for="phraseInput">Add a phrase for this scan</label>
+                <input type="text" id="phraseInput" placeholder="Client name, internal domain, filename" autocomplete="off" spellcheck="false">
+                <button class="btn" type="submit"><i data-lucide="plus" aria-hidden="true"></i>Add</button>
+              </form>
+              <ul class="chips" id="phraseList" aria-label="Phrases for this scan"></ul>
+              <div class="phrase-foot">
+                <span id="phraseHint"></span>
+                <button class="link" id="clearPhrases" type="button">Clear all</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card scanbar">
+          <p class="muted small" id="scanNote">Open a recording to start scanning.</p>
+          <div class="scan-row" id="scanIdle">
+            <div class="estimate">
+              <span class="est-num" id="estCount"></span>
+              <span class="est-label">estimated samples<small id="estDetail"></small></span>
+            </div>
+            <button class="btn primary lg" id="startScan" type="button"><i data-lucide="play" aria-hidden="true"></i><span id="startLabel"></span></button>
+          </div>
+          <div class="scan-run" id="scanRun" hidden>
+            <div class="run-head"><strong id="runLabel"></strong><span id="runPct">0%</span></div>
+            <div class="progress" id="progress" role="progressbar" aria-label="Scan progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="progressFill"></span></div>
+            <div class="run-foot">
+              <span id="runStats"></span>
+              <button class="btn danger" id="cancelScan" type="button"><i data-lucide="x" aria-hidden="true"></i>Cancel</button>
+            </div>
+          </div>
+          <div class="summary" id="scanSummary" hidden></div>
+        </div>
+      </section>
+
+      <!-- Findings -->
+      <section class="view" id="view-findings" role="tabpanel" aria-labelledby="tab-findings" hidden>
+        <div class="view-head">
+          <div>
+            <h1>Findings</h1>
+            <p id="findingsSub"></p>
+          </div>
+          <div class="head-actions">
+            <button class="btn" id="revealBtn" type="button" aria-pressed="false"></button>
+            <button class="btn" id="exportBtn" type="button"><i data-lucide="download" aria-hidden="true"></i>Export</button>
+          </div>
+        </div>
+
+        <div class="card empty" id="findingsEmpty">
+          <i data-lucide="scan-text" aria-hidden="true"></i>
+          <h2 id="emptyTitle"></h2>
+          <p id="emptyText"></p>
+          <button class="btn" type="button" data-goto="scan"><i data-lucide="scan-search" aria-hidden="true"></i>Go to Scan</button>
+        </div>
+
+        <div id="findingsBody" hidden>
+          <div class="filters" id="filters" role="group" aria-label="Filter by risk"></div>
+          <div class="grid findings-grid">
+            <ul class="finding-list" id="findingList"></ul>
+            <article class="card detail" id="detail" aria-label="Selected finding"></article>
+          </div>
+        </div>
+      </section>
+
+      <!-- Rules -->
+      <section class="view" id="view-rules" role="tabpanel" aria-labelledby="tab-rules" hidden>
+        <div class="view-head">
+          <div>
+            <h1>Wordlist</h1>
+            <p id="rulesSub"></p>
+          </div>
+          <div class="head-actions">
+            <button class="btn" id="saveWordlist" type="button"><i data-lucide="download" aria-hidden="true"></i>Export wordlist</button>
+            <button class="btn primary" id="addRule" type="button"><i data-lucide="plus" aria-hidden="true"></i>Add rule</button>
+          </div>
+        </div>
+        <ul class="rule-list" id="ruleList"></ul>
+      </section>
+
+      <!-- Terminal and CLI -->
+      <section class="view" id="view-automate" role="tabpanel" aria-labelledby="tab-automate" hidden>
+        <div class="view-head">
+          <div>
+            <h1>Terminal &amp; CLI</h1>
+            <p>Use the same scan settings in PowerShell or the interactive terminal.</p>
+          </div>
+        </div>
+
+        <div class="grid two">
+          <div class="card stack">
+            <h2><i data-lucide="keyboard" aria-hidden="true"></i>Terminal mode</h2>
+            <div class="tui" aria-label="Terminal status preview">
+              <div class="tui-top"><span>frameguard tui</span><span id="tuiFile"></span></div>
+              <div class="tui-body">
+                <div class="tui-pane">
+                  <div class="tui-title" id="tuiPreviewTitle"></div>
+                  <div class="frame" id="tuiFrame" role="img"></div>
+                </div>
+                <div class="tui-pane">
+                  <div class="tui-title">Live scan status</div>
+                  <pre id="tuiStatus"></pre>
+                </div>
+              </div>
+              <div class="tui-keys">
+                <span><kbd>F2</kbd> video</span>
+                <span><kbd>F3</kbd> sampling rate</span>
+                <span><kbd>F5</kbd> scan</span>
+                <span><kbd>Esc</kbd> cancel</span>
+                <span><kbd>Enter</kbd> open frame</span>
+                <span><kbd>E</kbd> export</span>
+                <span><kbd>Q</kbd> exit</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="stack">
+            <div class="card stack">
+              <div class="row">
+                  <h2><i data-lucide="terminal" aria-hidden="true"></i>CLI command example</h2>
+                <div class="seg" role="radiogroup" aria-label="Output format">
+                  <label><input type="radio" name="cliFormat" value="json"><span>JSON</span></label>
+                  <label><input type="radio" name="cliFormat" value="csv"><span>CSV</span></label>
+                </div>
+              </div>
+              <p class="muted small">Built from your current scan settings, for PowerShell.</p>
+              <div class="cmd-wrap">
+                <pre class="code-box" id="cliCmd" tabindex="0"></pre>
+                <button class="icon-btn" id="copyCli" type="button" aria-label="Copy CLI command"><i data-lucide="copy" aria-hidden="true"></i></button>
+              </div>
+            </div>
+
+            <div class="card stack">
+              <h2><i data-lucide="hard-drive-download" aria-hidden="true"></i>Planned Windows packages</h2>
+              <div class="tiles">
+                <div class="tile">
+                  <i data-lucide="monitor" aria-hidden="true"></i>
+                  <div><strong>Desktop installer</strong><p>Tauri app for Windows with the full review interface.</p></div>
+                </div>
+                <div class="tile">
+                  <i data-lucide="package" aria-hidden="true"></i>
+                  <div><strong>CLI package</strong><p>Scriptable binary with terminal mode for batch scans and automation.</p></div>
+                </div>
+                <div class="tile">
+                  <i data-lucide="terminal" aria-hidden="true"></i>
+                  <div>
+                    <strong>PowerShell installer</strong>
+                    <p>Choose the desktop app, the CLI, or both.</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Rule editor -->
+  <dialog class="dialog" id="ruleDialog" aria-labelledby="ruleDialogTitle">
+    <form id="ruleForm">
+      <div class="dialog-head">
+        <h2 id="ruleDialogTitle">Edit rule</h2>
+        <button class="icon-btn" type="button" data-close aria-label="Close"><i data-lucide="x" aria-hidden="true"></i></button>
+      </div>
+      <div class="dialog-body">
+        <div class="form-grid">
+          <label class="field"><span>Name</span>
+            <input type="text" id="rName" required autocomplete="off"></label>
+          <fieldset class="field">
+            <legend>Match type</legend>
+            <div class="seg">
+              <label><input type="radio" name="rType" value="plain"><span>Plain text</span></label>
+              <label><input type="radio" name="rType" value="regex"><span>Regex</span></label>
+            </div>
+          </fieldset>
+          <label class="field wide"><span>Pattern</span>
+            <input type="text" id="rPattern" class="mono" required autocomplete="off" spellcheck="false" aria-describedby="rError">
+            <small class="error" id="rError" role="alert"></small></label>
+          <fieldset class="field">
+            <legend>Risk</legend>
+            <div class="seg">
+              <label class="risk-low"><input type="radio" name="rRisk" value="low"><span>Low</span></label>
+              <label class="risk-medium"><input type="radio" name="rRisk" value="medium"><span>Medium</span></label>
+              <label class="risk-high"><input type="radio" name="rRisk" value="high"><span>High</span></label>
+            </div>
+          </fieldset>
+          <label class="check"><input type="checkbox" id="rSecret">Mask matched value in exports</label>
+        </div>
+        <div class="tester">
+          <label class="field"><span>Test against sample text</span>
+            <textarea id="rSample" class="mono" rows="4" spellcheck="false">API_KEY=fg_demo_8f3a91c2d47e6b05a1c9
+contact: dana.whitfield@acme-internal.example
+ls: key_file.pem  api_keys.txt  .env
+DB_PASSWORD=hunter2-demo-only</textarea></label>
+          <div class="test-result">
+            <strong id="rCount" aria-live="polite"></strong>
+            <pre class="code-box" id="rPreview"></pre>
+          </div>
+        </div>
+      </div>
+      <div class="dialog-foot">
+        <button class="btn" type="button" data-close>Cancel</button>
+        <button class="btn primary" type="submit" id="rSave">Save rule</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Export -->
+  <dialog class="dialog" id="exportDialog" aria-labelledby="exportTitle">
+    <div class="dialog-head">
+      <h2 id="exportTitle">Export findings</h2>
+      <button class="icon-btn" type="button" data-close aria-label="Close"><i data-lucide="x" aria-hidden="true"></i></button>
+    </div>
+    <div class="dialog-body">
+      <div class="export-opts">
+        <div class="seg" role="radiogroup" aria-label="Export format">
+          <label><input type="radio" name="exFormat" value="json"><span>JSON</span></label>
+          <label><input type="radio" name="exFormat" value="csv"><span>CSV</span></label>
+        </div>
+        <label class="check"><input type="checkbox" id="exMask" checked>Mask suspected secret values</label>
+      </div>
+      <pre class="code-box" id="exPreview" tabindex="0" aria-label="Export preview"></pre>
+    </div>
+    <div class="dialog-foot">
+      <span class="note" id="exNote"></span>
+      <button class="btn" type="button" id="exCopy"><i data-lucide="copy" aria-hidden="true"></i>Copy</button>
+      <button class="btn primary" type="button" id="exDownload"><i data-lucide="download" aria-hidden="true"></i>Download</button>
+    </div>
+  </dialog>
+
+  <dialog class="dialog clip-dialog" id="clipDialog" aria-labelledby="clipTitle" aria-describedby="clipRange">
+    <div class="dialog-head">
+      <div class="clip-heading"><i data-lucide="film" aria-hidden="true"></i><div>
+        <h2 id="clipTitle">Finding clip</h2>
+        <p class="muted small mono" id="clipRange"></p>
+      </div></div>
+      <button class="icon-btn" type="button" data-close aria-label="Close clip" autofocus><i data-lucide="x" aria-hidden="true"></i></button>
+    </div>
+    <div class="dialog-body">
+      <div class="clip-stage" id="clipStage" role="region" aria-label="Finding clip player" tabindex="0">
+        <video id="clipVideo" playsinline aria-label="Flagged video clip" hidden></video>
+        <p id="clipStatus" class="clip-status muted" role="status">Preparing clip</p>
+        <div class="clip-controls" id="clipControls" role="group" aria-label="Clip controls" hidden>
+          <button class="clip-control clip-play" id="clipPlay" type="button" title="Play" aria-label="Play">
+            <span data-icon="play"><i data-lucide="play" aria-hidden="true"></i></span>
+            <span data-icon="pause" hidden><i data-lucide="pause" aria-hidden="true"></i></span>
+            <span data-icon="replay" hidden><i data-lucide="rotate-ccw" aria-hidden="true"></i></span>
+          </button>
+          <input class="clip-slider" type="range" id="clipSeek" min="0" max="1" step="any" value="0" aria-label="Seek within clip" disabled>
+          <output class="clip-clock mono" id="clipClock" for="clipSeek">00:00.0 / 00:00.0</output>
+          <div class="clip-volume" id="clipVolumeGroup">
+            <button class="clip-control" id="clipMute" type="button" title="Mute" aria-label="Mute">
+              <span data-icon="sound"><i data-lucide="volume-2" aria-hidden="true"></i></span>
+              <span data-icon="mute" hidden><i data-lucide="volume-x" aria-hidden="true"></i></span>
+            </button>
+            <input class="clip-slider" type="range" id="clipVolume" min="0" max="1" step="0.01" value="1" aria-label="Clip volume">
+          </div>
+          <button class="clip-control" id="clipFullscreen" type="button" title="Fullscreen" aria-label="Fullscreen">
+            <span data-icon="expand"><i data-lucide="maximize" aria-hidden="true"></i></span>
+            <span data-icon="shrink" hidden><i data-lucide="minimize" aria-hidden="true"></i></span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </dialog>
+
+  <div class="toasts" id="toasts" aria-live="polite"></div>
+
+  <script src="./lucide.min.js"></script>
+  <script src="./profile-setup.js"></script>
+  <script src="./clip-player.js"></script>
+  <script src="./app.js"></script>
+</body>
+</html>

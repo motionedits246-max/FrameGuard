@@ -1,0 +1,298 @@
+name: FrameGuard checks
+
+on:
+  push:
+    branches:
+      - main
+      - "feature/**"
+    tags:
+      - "v*"
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      publish_release:
+        description: Publish the verified installers to GitHub Releases
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  core:
+    name: Scanner and CLI checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Rust
+        run: rustup toolchain install stable --profile minimal --component rustfmt --component clippy
+      - run: cargo +stable fmt --all --check
+      - run: cargo +stable test --locked
+      - run: cargo +stable clippy --locked --all-targets -- -D warnings
+      - run: node --check desktop/ui/app.js
+      - run: node --check desktop/ui/profile-setup.js
+      - run: node --check desktop/ui/clip-player.js
+
+  windows:
+    name: Windows desktop and CLI executables
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Rust
+        run: rustup toolchain install stable --profile minimal
+      - run: cargo +stable test --locked
+      - name: Prepare archive tool
+        run: ./desktop/scripts/prepare-windows-resources.ps1
+      - name: Build portable executables
+        run: cargo +stable build --locked --release -p frameguard-desktop -p frameguard-cli --features frameguard-desktop/custom-protocol
+      - name: Check CLI
+        run: .\target\release\frameguard.exe --version
+      - name: Test first-run setup, OCR and finding clips
+        run: cargo +stable test --locked --release -p frameguard-desktop --features custom-protocol
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FrameGuard-Windows-x64
+          path: |
+            target/release/frameguard-desktop.exe
+            target/release/frameguard.exe
+            target/release/archive-tool/
+          if-no-files-found: error
+      - name: Build Windows setup
+        working-directory: desktop
+        env:
+          RUSTUP_TOOLCHAIN: stable
+        run: npx --yes --package "@tauri-apps/cli@2.12.5" tauri build --bundles nsis --ci -- --locked
+      - name: Test Windows setup
+        run: |
+          $installers = @(Get-ChildItem -Path target/release/bundle/nsis -Filter '*-setup.exe' -File)
+          if ($installers.Count -ne 1) { throw "Expected one FrameGuard setup executable." }
+          $installDir = Join-Path $env:RUNNER_TEMP 'FrameGuardSetupCheck'
+          $process = Start-Process -FilePath $installers[0].FullName -ArgumentList '/S', "/D=$installDir" -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw "FrameGuard setup exited with code $($process.ExitCode)." }
+          $app = Get-ChildItem -LiteralPath $installDir -Filter '*.exe' -File |
+            Where-Object { $_.Name -in @('frameguard-desktop.exe', 'FrameGuard.exe') }
+          if (-not $app) { throw "Setup did not install the FrameGuard executable." }
+          Add-Type -AssemblyName System.Drawing
+          $expected = [System.Drawing.Icon]::new("$PWD\desktop\src-tauri\icons\icon.ico", 32, 32).ToBitmap()
+          $actual = [System.Drawing.Icon]::ExtractAssociatedIcon($installers[0].FullName).ToBitmap()
+          try {
+            if ($expected.Size -ne $actual.Size) { throw "Installer icon size differs from the app icon." }
+            for ($y = 0; $y -lt $expected.Height; $y++) {
+              for ($x = 0; $x -lt $expected.Width; $x++) {
+                if ($expected.GetPixel($x, $y).ToArgb() -ne $actual.GetPixel($x, $y).ToArgb()) {
+                  throw "Installer did not use the FrameGuard application icon."
+                }
+              }
+            }
+          } finally {
+            $expected.Dispose()
+            $actual.Dispose()
+          }
+          foreach ($resource in @('7z.exe', '7z.dll', 'License.txt')) {
+            if (-not (Test-Path -LiteralPath (Join-Path $installDir "archive-tool\$resource"))) {
+              throw "Setup did not install archive-tool\$resource."
+            }
+          }
+          Write-Host "Installed $($app.Name)"
+          Get-FileHash -LiteralPath $installers[0].FullName -Algorithm SHA256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FrameGuard-Windows-Setup-x64
+          path: target/release/bundle/nsis/*-setup.exe
+          if-no-files-found: error
+      - name: Stage Windows downloads
+        run: |
+          New-Item -ItemType Directory -Path release-files
+          $setup = Get-ChildItem -Path target/release/bundle/nsis -Filter '*-setup.exe' -File
+          Copy-Item -LiteralPath $setup.FullName -Destination release-files/FrameGuard_Windows_x64_Setup.exe
+          Compress-Archive -LiteralPath target/release/frameguard.exe -DestinationPath release-files/FrameGuard_Windows_x64_Terminal.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FrameGuard-release-windows
+          path: release-files/
+          if-no-files-found: error
+
+  linux:
+    name: Debian and Ubuntu desktop and terminal packages
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y --no-install-recommends build-essential pkg-config libwebkit2gtk-4.1-dev libssl-dev libxdo-dev librsvg2-dev xvfb xauth dbus-x11 xdotool webkit2gtk-driver openbox imagemagick at-spi2-core python3-pyatspi
+      - name: Set up Rust
+        run: rustup toolchain install stable --profile minimal
+      - name: Build desktop package
+        working-directory: desktop
+        env:
+          RUSTUP_TOOLCHAIN: stable
+        run: npx --yes --package "@tauri-apps/cli@2.12.5" tauri build --bundles deb --ci -- --locked
+      - name: Package the terminal app
+        run: |
+          cargo +stable build --locked --release -p frameguard-cli
+          mkdir -p release-files
+          mv target/release/bundle/deb/*.deb release-files/FrameGuard_Linux_x64_Desktop.deb
+          stage=$(mktemp -d)
+          install -D -m 755 target/release/frameguard "$stage/usr/bin/frameguard"
+          mkdir -p "$stage/DEBIAN"
+          version=$(target/release/frameguard --version | cut -d ' ' -f 2)
+          cat > "$stage/DEBIAN/control" <<EOF
+          Package: frameguard-terminal
+          Version: $version
+          Architecture: amd64
+          Maintainer: FrameGuard contributors <331259961+motionedits246-max@users.noreply.github.com>
+          Section: utils
+          Priority: optional
+          Depends: libc6 (>= 2.35), libgcc-s1, ffmpeg, tesseract-ocr, tesseract-ocr-eng
+          Description: Interactive terminal and CLI for FrameGuard video privacy scanning
+          EOF
+          dpkg-deb --root-owner-group --build "$stage" release-files/FrameGuard_Linux_x64_Terminal.deb
+      - name: Install and smoke-test both Linux packages
+        run: |
+          for package in release-files/*.deb; do
+            test "$(dpkg-deb -f "$package" Architecture)" = amd64
+          done
+          sudo apt-get install -y "$PWD/release-files/FrameGuard_Linux_x64_Desktop.deb" "$PWD/release-files/FrameGuard_Linux_x64_Terminal.deb"
+          frameguard --version
+          ffmpeg -v error -f lavfi -i color=white:s=800x360:d=1:r=24 \
+            -vf "drawtext=text=FrameGuardDemo:fontsize=54:fontcolor=black:x=32:y=32" \
+            -c:v libx264 -pix_fmt yuv420p -threads 1 /tmp/frameguard-fixture.mp4
+          frameguard scan /tmp/frameguard-fixture.mp4 --text FrameGuardDemo --output /tmp/frameguard-findings.json
+          python3 -c 'import json; assert json.load(open("/tmp/frameguard-findings.json"))["findings"]'
+          python3 - <<'PY'
+          import fcntl
+          import os
+          import pty
+          import select
+          import struct
+          import subprocess
+          import termios
+
+          master, slave = pty.openpty()
+          fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack("HHHH", 30, 100, 0, 0))
+          with subprocess.Popen(["frameguard", "tui"], stdin=slave, stdout=slave, stderr=slave,
+                                env={**os.environ, "TERM": "xterm-256color"}) as process:
+              os.close(slave)
+              try:
+                  assert select.select([master], [], [], 8)[0], "Terminal did not render"
+                  os.read(master, 65536)
+                  os.write(master, b"q")
+                  assert process.wait(timeout=8) == 0
+              finally:
+                  if process.poll() is None:
+                      process.kill()
+                  os.close(master)
+          PY
+          result=0
+          timeout 12s xvfb-run -a frameguard-desktop > /tmp/frameguard-desktop.log 2>&1 || result=$?
+          if [ "$result" -ne 124 ]; then
+            cat /tmp/frameguard-desktop.log
+            exit 1
+          fi
+      - name: Test opening and cancelling the real file picker
+        run: sh desktop/scripts/check-linux-open.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: FrameGuard-release-linux
+          path: release-files/
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: FrameGuard-linux-picker-diagnostic
+          path: /tmp/frameguard-picker-failure.png
+          if-no-files-found: ignore
+
+  kali:
+    name: Kali Linux file picker regression
+    needs: linux
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: FrameGuard-release-linux
+          path: release-files
+      - name: Open an MP4 on Kali Rolling
+        run: |
+          result=0
+          docker run --name frameguard-kali-test -v "$PWD:/source:ro" kalilinux/kali-rolling bash -ec '
+            export DEBIAN_FRONTEND=noninteractive
+            apt-get update -q
+            apt-get install -y --no-install-recommends python3 dbus-x11 xvfb xauth xdotool webkitgtk-webdriver openbox imagemagick at-spi2-core python3-pyatspi fonts-dejavu-core /source/release-files/FrameGuard_Linux_x64_Desktop.deb
+            useradd -m -s /bin/bash frameguard-test
+            runuser -u frameguard-test -- sh /source/desktop/scripts/check-linux-open.sh
+          ' || result=$?
+          docker cp frameguard-kali-test:/tmp/frameguard-picker-failure.png /tmp/frameguard-picker-failure.png 2>/dev/null || true
+          docker rm -f frameguard-kali-test
+          exit "$result"
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: FrameGuard-kali-picker-diagnostic
+          path: /tmp/frameguard-picker-failure.png
+          if-no-files-found: ignore
+
+  release:
+    name: Publish verified downloads
+    if: >-
+      startsWith(github.ref, 'refs/tags/v') ||
+      (github.event_name == 'workflow_dispatch' && inputs.publish_release) ||
+      (github.event_name == 'push' && github.ref == 'refs/heads/main' &&
+       startsWith(github.event.head_commit.message, 'Release FrameGuard v'))
+    needs: [core, windows, linux, kali]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: FrameGuard-release-*
+          merge-multiple: true
+          path: release-files
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(sed -n '/^\[workspace.package\]/,/^\[/s/^version = "\([^"]*\)"/\1/p' Cargo.toml)
+          test -n "$version"
+          tag=v"$version"
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then test "$GITHUB_REF_NAME" = "$tag"; fi
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release view "$tag" --json assets --jq '.assets[].name' > /tmp/frameguard-release-assets
+            for file in release-files/*; do
+              grep -Fxq "${file##*/}" /tmp/frameguard-release-assets
+            done
+            echo "The release already has all four downloads."
+            exit 0
+          fi
+          cat > /tmp/frameguard-release-notes <<'EOF'
+          - Complete Rust scanner, desktop GUI, terminal interface, and CLI source is now on main.
+          - First-run personalization reads the keyword catalog from main.
+          - Includes the Windows setup activation and application icon fixes.
+          - Includes Linux file picker and local video playback fixes, verified on Ubuntu and Kali.
+          - Windows and Linux desktop and terminal packages are available below.
+          EOF
+          gh release create "$tag" release-files/* --target "$GITHUB_SHA" --title "FrameGuard $tag" --notes-file /tmp/frameguard-release-notes --latest
+      - name: Remove the merged app branch
+        if: github.ref == 'refs/heads/main'
+        run: |
+          branch=feature/local-ocr
+          ref="refs/remotes/origin/$branch"
+          if git show-ref --verify --quiet "$ref"; then
+            sha=$(git rev-parse "$ref")
+            if git merge-base --is-ancestor "$sha" "$GITHUB_SHA"; then
+              git push --force-with-lease="refs/heads/$branch:$sha" origin ":refs/heads/$branch"
+            else
+              echo "Keeping $branch because it contains work outside main."
+            fi
+          fi

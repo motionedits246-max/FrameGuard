@@ -1,0 +1,13 @@
+[package]
+name = "frameguard-core"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+blake3 = { version = "1", features = ["pure"] }
+csv = "1"
+dunce = "1"
+regex = "1"

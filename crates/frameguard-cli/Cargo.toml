@@ -1,0 +1,19 @@
+[package]
+name = "frameguard-cli"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "frameguard"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+frameguard-core.workspace = true
+serde_json.workspace = true
+clap = { version = "4", features = ["derive"] }
+crossterm = "0.28"
+ctrlc = "3"
+image = { version = "0.25", default-features = false, features = ["png"] }
+ratatui = "0.29"
+tempfile = "3"

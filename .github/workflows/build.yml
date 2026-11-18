@@ -224,7 +224,7 @@ jobs:
           docker run --rm -v "$PWD:/source:ro" kalilinux/kali-rolling bash -ec '
             export DEBIAN_FRONTEND=noninteractive
             apt-get update -q
-            apt-get install -y --no-install-recommends python3 dbus-x11 xvfb xauth xdotool webkit2gtk-driver openbox imagemagick at-spi2-core python3-pyatspi fonts-dejavu-core /source/release-files/FrameGuard_Linux_x64_Desktop.deb
+            apt-get install -y --no-install-recommends python3 dbus-x11 xvfb xauth xdotool webkitgtk-webdriver openbox imagemagick at-spi2-core python3-pyatspi fonts-dejavu-core /source/release-files/FrameGuard_Linux_x64_Desktop.deb
             useradd -m -s /bin/bash frameguard-test
             runuser -u frameguard-test -- sh /source/desktop/scripts/check-linux-open.sh
           '

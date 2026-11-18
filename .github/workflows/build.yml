@@ -221,13 +221,23 @@ jobs:
           path: release-files
       - name: Open an MP4 on Kali Rolling
         run: |
-          docker run --rm -v "$PWD:/source:ro" kalilinux/kali-rolling bash -ec '
+          result=0
+          docker run --name frameguard-kali-test -v "$PWD:/source:ro" kalilinux/kali-rolling bash -ec '
             export DEBIAN_FRONTEND=noninteractive
             apt-get update -q
             apt-get install -y --no-install-recommends python3 dbus-x11 xvfb xauth xdotool webkitgtk-webdriver openbox imagemagick at-spi2-core python3-pyatspi fonts-dejavu-core /source/release-files/FrameGuard_Linux_x64_Desktop.deb
             useradd -m -s /bin/bash frameguard-test
             runuser -u frameguard-test -- sh /source/desktop/scripts/check-linux-open.sh
-          '
+          ' || result=$?
+          docker cp frameguard-kali-test:/tmp/frameguard-picker-failure.png /tmp/frameguard-picker-failure.png 2>/dev/null || true
+          docker rm -f frameguard-kali-test
+          exit "$result"
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: FrameGuard-kali-picker-diagnostic
+          path: /tmp/frameguard-picker-failure.png
+          if-no-files-found: ignore
 
   release:
     name: Publish verified downloads

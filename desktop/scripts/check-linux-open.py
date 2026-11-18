@@ -93,8 +93,7 @@ with tempfile.TemporaryDirectory(prefix="frameguard-picker-test-") as temp:
         while pending:
             node = pending.pop()
             try:
-                if (node.getRoleName() == "push button" and node.name == "Select"
-                        and node.getState().contains(pyatspi.STATE_ENABLED)):
+                if node.name.removeprefix("_") in {"Select", "Open", "Choose"}:
                     return node.queryAction().doAction(0)
                 pending.extend(child for child in node if child)
             except Exception:
@@ -134,7 +133,8 @@ with tempfile.TemporaryDirectory(prefix="frameguard-picker-test-") as temp:
             check=True,
         )
         time.sleep(0.5)
-        eventually(accept_picker)
+        picker_key(window, "Return")
+        eventually(lambda: not picker_window() or accept_picker())
         eventually(lambda: javascript(
             "return document.getElementById('fileName').textContent === 'file-picker-fixture.mp4';"
         ))
@@ -149,6 +149,15 @@ with tempfile.TemporaryDirectory(prefix="frameguard-picker-test-") as temp:
         print("Real file picker opened, cancelled twice, reopened, selected an MP4, and scanned it.")
     except BaseException:
         subprocess.run(["import", "-window", "root", "/tmp/frameguard-picker-failure.png"], check=False)
+        pending = [pyatspi.Registry.getDesktop(0)]
+        while pending:
+            node = pending.pop()
+            try:
+                if node.name:
+                    print("Accessible:", node.getRoleName(), repr(node.name))
+                pending.extend(child for child in node if child)
+            except Exception:
+                continue
         if session:
             print(javascript("return document.body.innerText;")[-6000:])
             print(javascript(

@@ -2,9 +2,10 @@
 members = [
     "crates/frameguard-core",
     "crates/frameguard-cli",
+    "crates/frameguard-playback",
     "desktop/src-tauri",
 ]
-default-members = ["crates/frameguard-core", "crates/frameguard-cli"]
+default-members = ["crates/frameguard-core", "crates/frameguard-cli", "crates/frameguard-playback"]
 resolver = "2"
 
 [workspace.package]

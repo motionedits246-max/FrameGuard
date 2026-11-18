@@ -267,6 +267,7 @@ jobs:
           - Windows scanner activation keeps checked executables and DLLs in place.
           - Windows setup and uninstaller use the FrameGuard application icon.
           - Linux file pickers use the desktop portal with an asynchronous response.
+          - Linux previews and finding clips stream locally with HTTP range support.
           - Verified opening, cancelling, selecting, and scanning recordings on Linux.
           EOF
           gh release create "$tag" release-files/* --target "$GITHUB_SHA" --title "FrameGuard $tag" --notes-file /tmp/frameguard-release-notes --latest

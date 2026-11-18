@@ -17,6 +17,8 @@ pub(super) struct ClipRequest {
 }
 
 struct ClipFile {
+    #[cfg(target_os = "linux")]
+    _source: Option<frameguard_playback::Media>,
     path: PathBuf,
     _directory: tempfile::TempDir,
 }
@@ -72,6 +74,8 @@ pub async fn open_finding_clip(
                 return Ok(None);
             }
             Ok(Some(ClipFile {
+                #[cfg(target_os = "linux")]
+                _source: None,
                 path,
                 _directory: directory,
             }))
@@ -86,10 +90,20 @@ pub async fn open_finding_clip(
     let Some(file) = prepared.map_err(failure)?? else {
         return Ok(None);
     };
+    #[cfg(target_os = "linux")]
+    let mut file = file;
     app.asset_protocol_scope()
         .allow_file(&file.path)
         .map_err(failure)?;
+    #[cfg(not(target_os = "linux"))]
     let path = file.path.to_string_lossy().into_owned();
+    #[cfg(target_os = "linux")]
+    let path = {
+        let source = crate::playback::open(&app, &file.path)?;
+        let url = source.url().to_owned();
+        file._source = Some(source);
+        url
+    };
     clip.file = Some(file);
     Ok(Some(path))
 }

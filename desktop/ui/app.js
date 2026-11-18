@@ -256,7 +256,7 @@
       }
       if (!path) throw new Error('The clip could not be prepared.');
       status.hidden = true;
-      clipPlayback.open(bridge.core.convertFileSrc(path));
+      clipPlayback.open(path.startsWith('http://127.0.0.1:') ? path : bridge.core.convertFileSrc(path));
     } catch (error) {
       if (activeClipId !== clipId) return;
       status.textContent = String(error);
@@ -615,7 +615,7 @@
       $('#videoPlaceholder').hidden = true;
       $('#videoSeek').max = String(video.duration);
       player.hidden = false;
-      player.src = bridge.core.convertFileSrc(video.path);
+      player.src = video.playback_url ?? bridge.core.convertFileSrc(video.path);
       updateTransport();
     } catch (error) { toast(error); }
     finally { state.opening = false; renderAll(); }
@@ -624,7 +624,7 @@
   $('#playVideo').addEventListener('click', () => {
     if (player.paused) {
       if (player.ended) player.currentTime = 0;
-      player.play().catch(() => toast('Windows could not play this video track.'));
+      player.play().catch(() => toast('This video track could not be played. Check that MP4 playback components are installed.'));
     } else player.pause();
   });
   for (const event of ['play', 'pause', 'ended', 'emptied']) player.addEventListener(event, () => {

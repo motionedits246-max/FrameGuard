@@ -1,6 +1,8 @@
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
 mod dialogs;
+#[cfg(target_os = "linux")]
+mod playback;
 mod preview;
 mod profile;
 mod runtime;
@@ -22,6 +24,8 @@ use tauri::{AppHandle, Emitter, Manager, RunEvent};
 struct Session {
     generation: u64,
     selected: Option<Video>,
+    #[cfg(target_os = "linux")]
+    _source: Option<frameguard_playback::Media>,
     active: Option<ActiveScan>,
     clip: Option<preview::ClipRequest>,
 }
@@ -37,6 +41,8 @@ type DesktopState = Mutex<Session>;
 struct OpenedVideo {
     generation: u64,
     path: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    playback_url: Option<String>,
     #[serde(flatten)]
     metadata: VideoMetadata,
 }
@@ -68,10 +74,20 @@ async fn open_recording(app: AppHandle) -> Result<Option<OpenedVideo>, String> {
             .allow_file(video.path())
             .map_err(failure)?;
         preview::clear_clip(&app, &mut session);
+        #[cfg(not(target_os = "linux"))]
+        let playback_url = None;
+        #[cfg(target_os = "linux")]
+        let playback_url = {
+            let source = playback::open(&app, video.path())?;
+            let url = source.url().to_owned();
+            session._source = Some(source);
+            Some(url)
+        };
         session.generation += 1;
         let selected = OpenedVideo {
             generation: session.generation,
             path: video.path().to_string_lossy().into_owned(),
+            playback_url,
             metadata: video.metadata.clone(),
         };
         session.selected = Some(video);
@@ -232,6 +248,11 @@ fn main() {
     tauri::Builder::default()
         .manage(DesktopState::default())
         .manage(runtime::RuntimeState::default())
+        .setup(|_app| {
+            #[cfg(target_os = "linux")]
+            playback::initialize(_app);
+            Ok(())
+        })
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             runtime::runtime_status,

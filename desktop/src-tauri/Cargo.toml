@@ -23,3 +23,6 @@ custom-protocol = ["tauri/custom-protocol"]
 
 [target.'cfg(windows)'.dependencies]
 sha2 = "0.10"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+frameguard-playback = { path = "../../crates/frameguard-playback" }

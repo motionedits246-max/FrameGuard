@@ -2,7 +2,11 @@
 set -eu
 
 runtime_dir=$(mktemp -d -t frameguard-session.XXXXXX)
-trap 'rm -rf "$runtime_dir"' EXIT
+cleanup() {
+  fusermount3 -u "$runtime_dir/doc" 2>/dev/null || fusermount -u "$runtime_dir/doc" 2>/dev/null || true
+  rm -rf "$runtime_dir"
+}
+trap cleanup EXIT
 export XDG_RUNTIME_DIR="$runtime_dir"
 export XDG_CURRENT_DESKTOP=XFCE
 xvfb-run -a dbus-run-session -- sh -c '

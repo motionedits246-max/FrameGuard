@@ -9,6 +9,8 @@ import time
 import urllib.error
 import urllib.request
 
+import pyatspi
+
 
 def eventually(probe, timeout=25):
     deadline = time.monotonic() + timeout
@@ -86,6 +88,20 @@ with tempfile.TemporaryDirectory(prefix="frameguard-picker-test-") as temp:
         subprocess.run(["xdotool", "windowactivate", "--sync", window], check=True)
         subprocess.run(["xdotool", "key", "--clearmodifiers", *keys], check=True)
 
+    def accept_picker():
+        pending = [pyatspi.Registry.getDesktop(0)]
+        while pending:
+            node = pending.pop()
+            try:
+                if (node.getRoleName() == "push button" and node.name == "Select"
+                        and node.getState().contains(pyatspi.STATE_ENABLED)):
+                    return node.queryAction().doAction(0)
+                pending.extend(child for child in node if child)
+            except Exception:
+                # A cancelled chooser may disappear while AT-SPI updates its tree.
+                continue
+        return False
+
     try:
         eventually(running)
         created = request(
@@ -111,15 +127,14 @@ with tempfile.TemporaryDirectory(prefix="frameguard-picker-test-") as temp:
 
         click("#openBtn")
         window = eventually(picker_window)
+        time.sleep(0.5)
         picker_key(window, "ctrl+l")
         subprocess.run(
             ["xdotool", "type", "--clearmodifiers", "--delay", "1", str(video)],
             check=True,
         )
-        picker_key(window, "Return")
         time.sleep(0.5)
-        if picker_window():
-            picker_key(window, "alt+o")
+        eventually(accept_picker)
         eventually(lambda: javascript(
             "return document.getElementById('fileName').textContent === 'file-picker-fixture.mp4';"
         ))

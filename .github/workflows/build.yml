@@ -123,7 +123,7 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo apt-get update -q
-          sudo apt-get install -y --no-install-recommends build-essential pkg-config libwebkit2gtk-4.1-dev libssl-dev libxdo-dev librsvg2-dev xvfb xauth dbus-x11 xdotool webkit2gtk-driver openbox imagemagick
+          sudo apt-get install -y --no-install-recommends build-essential pkg-config libwebkit2gtk-4.1-dev libssl-dev libxdo-dev librsvg2-dev xvfb xauth dbus-x11 xdotool webkit2gtk-driver openbox imagemagick at-spi2-core python3-pyatspi
       - name: Set up Rust
         run: rustup toolchain install stable --profile minimal
       - name: Build desktop package
@@ -224,7 +224,7 @@ jobs:
           docker run --rm -v "$PWD:/source:ro" kalilinux/kali-rolling bash -ec '
             export DEBIAN_FRONTEND=noninteractive
             apt-get update -q
-            apt-get install -y --no-install-recommends python3 dbus-x11 xvfb xauth xdotool webkit2gtk-driver openbox imagemagick fonts-dejavu-core /source/release-files/FrameGuard_Linux_x64_Desktop.deb
+            apt-get install -y --no-install-recommends python3 dbus-x11 xvfb xauth xdotool webkit2gtk-driver openbox imagemagick at-spi2-core python3-pyatspi fonts-dejavu-core /source/release-files/FrameGuard_Linux_x64_Desktop.deb
             useradd -m -s /bin/bash frameguard-test
             runuser -u frameguard-test -- sh /source/desktop/scripts/check-linux-open.sh
           '
